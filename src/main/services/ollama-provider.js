@@ -1,3 +1,7 @@
+// 超时：列模型要快（本地服务，没起就是没起）；对话给慢模型留足时间
+const LIST_TIMEOUT_MS = 15000;
+const CHAT_TIMEOUT_MS = 120000;
+
 class OllamaProvider {
   /**
    * Fetch installed models from Ollama
@@ -5,7 +9,7 @@ class OllamaProvider {
    */
   async fetchModels(endpoint) {
     const url = endpoint.replace(/\/+$/, '') + '/api/tags';
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: AbortSignal.timeout(LIST_TIMEOUT_MS) });
     if (!response.ok) {
       throw new Error(`Ollama 模型列表获取失败 (${response.status})`);
     }
@@ -41,6 +45,7 @@ class OllamaProvider {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(CHAT_TIMEOUT_MS),
     });
 
     if (!response.ok) {

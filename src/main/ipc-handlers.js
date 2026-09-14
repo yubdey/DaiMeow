@@ -49,10 +49,37 @@ function registerIpcHandlers(ctx) {
     return true;
   });
 
+  // 控制面板刷新/重载后用它对齐「启动/停止」按钮的真实状态
+  ipcMain.handle('control:get-state', async () => {
+    return { running: !!ctx.isLoopRunning() };
+  });
+
   // Pet ready — start mouse tracking
   ipcMain.handle('pet:ready', async () => {
+    const petWindow = ctx.getPetWindow();
+    if (petWindow && !petWindow.isDestroyed()) {
+      const config = getConfig();
+      // 重新下发一次穿透/固定状态：pet 页面可能晚于 control:start 完成加载，
+      // 避免渲染层持有默认值导致拖动区域与配置不一致。
+      petWindow.webContents.send('pet:passthrough-changed', config.mousePassthrough ?? false);
+      petWindow.webContents.send('pet:fixed-changed', config.fixedPosition ?? false);
+      // 页面按"隐藏"初始化，这里同步一次真实可见性
+      petWindow.webContents.send('pet:visibility-changed', petWindow.isVisible());
+    }
     ctx.startMousePoller();
     return true;
+  });
+
+  // 窗口拖动（页面里 pointerdown / pointerup 时调用）
+  ipcMain.on('pet:drag-start', () => {
+    ctx.getPetDrag().start();
+  });
+  ipcMain.on('pet:drag-end', () => {
+    ctx.getPetDrag().stop();
+  });
+  // 渲染进程每帧一次：拖动跟手的主节拍（见 services/pet-drag.js 顶部说明）
+  ipcMain.on('pet:drag-tick', () => {
+    ctx.getPetDrag().tick();
   });
 
   // Pet error log
@@ -164,6 +191,11 @@ function registerIpcHandlers(ctx) {
   ipcMain.handle('notice:dismiss', async (event, version) => {
     ctx.getNoticeManager().markSeen(version);
     return true;
+  });
+
+  // 生活词条
+  ipcMain.handle('life-tags:get-all', async () => {
+    return ctx.getLifeTagsManager().getAll();
   });
 
 }

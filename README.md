@@ -4,7 +4,7 @@
 
 [![Build](https://github.com/yubdey/DaiMeow/actions/workflows/build.yml/badge.svg)](https://github.com/yubdey/DaiMeow/actions/workflows/build.yml)
 [![Release](https://github.com/yubdey/DaiMeow/actions/workflows/build-release.yml/badge.svg)](https://github.com/yubdey/DaiMeow/actions/workflows/build-release.yml)
-[![Version](https://img.shields.io/badge/version-1.1.0-blue)](https://github.com/yubdey/DaiMeow/releases)
+[![Version](https://img.shields.io/badge/version-1.1.1-blue)](https://github.com/yubdey/DaiMeow/releases)
 
 # 呆喵 DaiMeow
 
@@ -19,12 +19,14 @@
 ## ✨ 功能特点
 
 - **Live2D 桌宠渲染**：透明无边框置顶窗口，Cubism 3 模型实时渲染，常驻屏幕不挡操作
-- **AI 屏幕观察**：定时截图（默认每 15 秒）→ 多模态大模型 → 呆喵用 1~2 句简短台词评论屏幕内容
+- **AI 屏幕观察**：定时截图（默认每 5 秒）→ 多模态大模型 → 呆喵用 1~2 句简短台词评论屏幕内容
 - **头像视线追踪**：呆喵的头和眼睛会跟随鼠标移动
+- **随机待机动作 + 点击互动**：隔 8~22 秒随机做一个动作（点头 / 摇头 / 看左 / 看右 / 抬头 / 低头 / 耳朵抖动 ×2 / 开心 / 惊讶 / 难过）；用鼠标点一下呆喵，它会立刻随机回一个动作
 - **手柄右摇杆控制视角**：通过 Windows XInput 读取手柄，右摇杆控制呆喵视线方向（后台窗口也能用）
 - **多服务商支持**：Moonshot (Kimi)、火山方舟、阿里云百炼、智谱 AI、硅基流动、DeepSeek、小米 MiMo、Ollama 本地模型
 - **人格系统**：6 种可切换人格（元气随从猫 / 温柔陪伴猫 / 傲娇吐槽猫 / 专业猎人猫 / 慵懒摸鱼猫 / 守护骑士猫），每人格有独立完整的 system prompt
-- **桌宠调整**：位置、大小缩放、透明度、鼠标穿透开关、固定位置锁定、原生窗口拖动
+- **生活词条**：长期使用习惯自动解锁的词条（夜猫子 / 早鸟 / 家里蹲 / 工作狂 / "玩"家 / 摸鱼大师）。场景类词条在生成台词的**同一次多模态请求**中顺带识别屏幕场景（工作 / 娱乐 / 其他），不额外消耗图片 Token；使用满 14 天后按场景占比评定等级
+- **桌宠调整**：位置、大小缩放、透明度、鼠标穿透开关、固定位置锁定、窗口拖动
 - **系统托盘**：关闭窗口最小化到托盘，托盘菜单快捷控制
 - **GitHub Pages 公告系统**：启动时后台异步检查远程公告，有新版本才弹窗
 - **统计面板**：本次运行 / 累计运行时间、对话数、Token 消耗
@@ -90,11 +92,16 @@
 ```
 DaiMeow/
 ├── package.json                  # 依赖与脚本
-├── 启动呆喵.bat                  # Windows 一键启动脚本
+├── start.bat                     # Windows 一键启动脚本（开发用）
+├── build.bat                     # Windows 本地打包脚本
+├── notice.json                   # GitHub Pages 公告数据（远程公告源）
+├── LICENSE                       # MIT 协议
+├── .github/workflows/            # CI：构建检查 + 打 tag 自动发 Release
 ├── scripts/
 │   └── patch-bundle.js           # esbuild 产物后处理（Cubism2 兼容）
 ├── model/
 │   └── daimeow/                  # Live2D 模型文件（.moc3 / .model3.json / 贴图等）
+│       └── motions/              # 11 个动作文件（.motion3.json，随机待机 / 点击互动用）
 └── src/
     ├── main/                     # Electron 主进程
     │   ├── index.js              # 应用入口、生命周期、服务装配
@@ -103,16 +110,20 @@ DaiMeow/
     │   ├── ipc-handlers.js       # IPC 通道注册
     │   └── services/
     │       ├── api-client.js     # OpenAI 兼容 API + Ollama 双路径调用
+    │       ├── atomic-file.js    # 本地数据原子写（临时文件 + rename）
     │       ├── chat-manager.js   # 聊天历史管理
     │       ├── config-store.js   # 配置持久化
     │       ├── gamepad-poller.js # 手柄 XInput 轮询
     │       ├── idle-detector.js  # 空闲检测
+    │       ├── life-tags-defs.js # 生活词条定义（含场景占比词条）
+    │       ├── life-tags-manager.js # 词条统计、场景计数与等级计算
     │       ├── model-server.js   # 本地 HTTP 模型文件服务器
     │       ├── mouse-poller.js   # 鼠标位置轮询
     │       ├── notice-manager.js # GitHub Pages 公告检测
     │       ├── ollama-provider.js# Ollama 本地模型接口
     │       ├── personalities.js  # 6 种人格定义
     │       ├── personality-manager.js # 人格管理与 system prompt 构建
+    │       ├── pet-drag.js       # 桌宠窗口拖动（页面手势 + rAF 驱动主进程跟手）
     │       ├── screenshot.js     # 屏幕截图与压缩
     │       └── stats-tracker.js  # 会话/累计统计
     ├── preload/
@@ -126,7 +137,7 @@ DaiMeow/
         │   └── logo.png
         └── pet/                  # 宠物窗口（Live2D 渲染）
             ├── index.html
-            ├── pet-app-esm.js    # PIXI + Live2D 渲染逻辑（源文件）
+            ├── pet-app-esm.js    # PIXI + Live2D 渲染逻辑（视线 / 随机动作 / 拖动，源文件）
             └── pet-bundle.js     # esbuild 打包产物（运行时加载）
 ```
 
@@ -150,7 +161,7 @@ npm start
 npm run dev
 ```
 
-Windows 下也可以直接双击项目根目录的 `启动呆喵.bat` 一键启动。
+Windows 下也可以直接双击项目根目录的 `start.bat` 一键启动。
 
 ### 手动打包宠物渲染器（通常无需手动执行）
 
@@ -172,7 +183,7 @@ npm run build:pet
 Windows: %APPDATA%/daimeow/config.json
 ```
 
-> ⚠️ 文件中的 API Key 是本机明文保存，请勿将 config.json 提交到 GitHub。
+> 🔐 API Key 会用 Electron `safeStorage` 加密后保存（Windows 上走 DPAPI，绑定当前 Windows 用户）；系统不支持加密时自动退回明文。无论哪种情况，都请勿把 config.json 提交到 GitHub。
 
 | 配置项 | 说明 | 默认值 |
 |--------|------|--------|
@@ -183,13 +194,15 @@ Windows: %APPDATA%/daimeow/config.json
 | `model` | 当前视觉模型 ID | — |
 | `ollamaEndpoint` | Ollama 服务地址 | `http://127.0.0.1:11434` |
 | `screenshotInterval` | 截图间隔（秒） | `5` |
+| `sceneSampleEvery` | 场景识别频率（每 N 张截图识别一次） | `1` |
 | `maxTokens` | 单次回复最大 Token | `60` |
 | `temperature` | 采样温度 | `0.6` |
 | `petScale` | 实际缩放系数（0.3~1.0） | `0.5` |
 | `petPositionX / petPositionY` | 桌宠位置（0~1 比例） | `0 / 0.5` |
 | `fixedPosition` | 固定位置锁定 | `false` |
-| `mousePassthrough` | 鼠标穿透 | `true` |
+| `mousePassthrough` | 鼠标穿透 | `false` |
 | `petOpacity` | 桌宠透明度（0.1~1.0） | `1.0` |
+| `personality` | 上次选择的人格 id | `energetic` |
 | `lastNotice` | 已显示公告版本（去重） | `''` |
 
 ### 服务商配置
@@ -205,9 +218,10 @@ Windows: %APPDATA%/daimeow/config.json
 1. **首次启动**：弹出《呆喵使用须知》，点击「我知道了」进入主界面
 2. **启动呆喵**：点击主页的「呆喵？启动！」按钮，宠物窗口出现，开始定时观察屏幕并评论
 3. **切换人格**：「人格」面板选择喜欢的随从猫性格
-4. **调整桌宠**：「调整」面板可修改位置、大小、透明度；关闭「鼠标穿透」后长按呆喵可拖动窗口；开启「固定位置」锁定
+4. **调整桌宠**：「调整」面板可修改位置、大小、透明度；关闭「鼠标穿透」后可按住呆喵拖动窗口；开启「固定位置」锁定
 5. **查看记录**：「记录」面板回看对话历史与截图
-6. **托盘控制**：关闭主窗口后最小化到托盘，左键单击托盘图标恢复窗口，右键可退出
+6. **随机动作**：呆喵会隔 8~22 秒自己做一个随机动作；用鼠标点一下呆喵，它会立刻随机回一个动作（点头 / 摇头 / 耳朵抖动 1·2 / 开心 / 惊讶 / 难过）
+7. **托盘控制**：关闭主窗口后最小化到托盘，左键单击托盘图标恢复窗口，右键可退出
 
 ---
 
@@ -228,6 +242,9 @@ A：安装 [Ollama](https://ollama.com/) 并拉取一个视觉模型（如 `olla
 **Q：手柄怎么控制呆喵？**
 A：插入支持 XInput 的手柄，右摇杆即可控制呆喵视线方向，无需切换窗口焦点。
 
+**Q：怎么添加或替换呆喵的动作？**
+A：动作是标准的 Cubism `motion3.json`，放进 `model/daimeow/motions/` 后在 `model/daimeow/daimeow.model3.json` 的 `Motions` 里登记即可（分组名随意，前端按文件名识别）。目前前端认识的动作名：`nod`、`shake_head`、`look_left`、`look_right`、`look_up`、`look_down`、`blink`、`ear_twitch`、`happy`、`surprised`、`sad`。
+
 **Q：配置保存在哪里？**
 A：`%APPDATA%/daimeow/config.json`，统计在 `%APPDATA%/daimeow/totals.json`。
 
@@ -239,7 +256,7 @@ A：`%APPDATA%/daimeow/config.json`，统计在 `%APPDATA%/daimeow/totals.json`�
   - 自动更新 exe（远程提供 `download` 字段）
   - Live2D 模型更新
   - AI 人格配置更新
-  - 活动公告（`force` 强制显示已支持）
+  - 活动公告（`force` 字段已透传给界面；目前所有公告统一按版本去重，不会重复弹）
 
 ---
 

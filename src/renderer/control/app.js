@@ -15,11 +15,20 @@ function switchTab(tab) {
 
   if (tab === 'history') refreshHistory();
   if (tab === 'config') loadConfigToForm();
-  if (tab === 'personality') loadPersonalities();
+  if (tab === 'personality') { loadPersonalities(); loadLifeTags(); }
 }
 
 // --- Start/Stop ---
 const startBtn = document.getElementById('startBtn');
+
+// 统一按钮显示：点击启动/停止、以及面板重载后都用它，避免 UI 与实际状态不一致
+function setRunningUI(running) {
+  isRunning = running;
+  startBtn.textContent = running ? '停止运行' : '呆喵？启动！';
+  startBtn.classList.toggle('running', running);
+  startBtn.disabled = false;
+  if (running) updateStatus('运行中');
+}
 
 startBtn.addEventListener('click', async () => {
   if (!isRunning) {
@@ -27,11 +36,7 @@ startBtn.addEventListener('click', async () => {
     startBtn.disabled = true;
     try {
       await api.invoke('control:start');
-      isRunning = true;
-      startBtn.textContent = '停止运行';
-      startBtn.classList.add('running');
-      startBtn.disabled = false;
-      updateStatus('运行中');
+      setRunningUI(true);
     } catch (err) {
       startBtn.textContent = '呆喵？启动！';
       startBtn.disabled = false;
@@ -39,9 +44,7 @@ startBtn.addEventListener('click', async () => {
     }
   } else {
     await api.invoke('control:stop');
-    isRunning = false;
-    startBtn.textContent = '呆喵？启动！';
-    startBtn.classList.remove('running');
+    setRunningUI(false);
     updateStatus('已停止');
   }
 });
@@ -148,6 +151,7 @@ const cfgModel = document.getElementById('cfgModel');
 const cfgEndpoint = document.getElementById('cfgEndpoint');
 const cfgInterval = document.getElementById('cfgInterval');
 const cfgIntervalVal = document.getElementById('cfgIntervalVal');
+const cfgSceneSample = document.getElementById('cfgSceneSample');
 const cfgProviderType = document.getElementById('cfgProviderType');
 const cfgOllamaEndpoint = document.getElementById('cfgOllamaEndpoint');
 const refreshOllamaBtn = document.getElementById('refreshOllamaBtn');
@@ -338,6 +342,7 @@ async function loadConfigToForm() {
   cfgOllamaEndpoint.value = config.ollamaEndpoint || 'http://127.0.0.1:11434';
   cfgInterval.value = config.screenshotInterval || 5;
   cfgIntervalVal.textContent = (config.screenshotInterval || 5) + 's';
+  cfgSceneSample.value = String(config.sceneSampleEvery || 1);
 
   // Toggle visibility
   document.querySelectorAll('.api-only').forEach(el => el.style.display = isOllama ? 'none' : '');
@@ -397,6 +402,7 @@ document.getElementById('saveConfigBtn').addEventListener('click', async () => {
     ollamaEndpoint: isOllama ? (cfgOllamaEndpoint.value || 'http://127.0.0.1:11434') : undefined,
     model: cfgModel.value,
     screenshotInterval: parseInt(cfgInterval.value),
+    sceneSampleEvery: parseInt(cfgSceneSample.value) || 1,
     maxTokens: parseInt(document.getElementById('cfgMaxTokens').value),
     temperature: parseFloat(document.getElementById('cfgTemperature').value),
   };
@@ -485,10 +491,14 @@ document.getElementById('editAlwaysOnTop').addEventListener('change', (e) => {
 });
 
 // Opacity slider
+let opacityDebounceTimer = null;
 document.getElementById('editOpacity').addEventListener('input', (e) => {
   const val = parseInt(e.target.value);
   document.getElementById('editOpacityVal').textContent = val + '%';
-  api.invoke('control:set-opacity', val / 100);
+  // 拖动过程中 input 事件很密集，主进程每次都要同步写 config.json，
+  // 所以和位置滑杆一样做 80ms 防抖（松手后的最终值一定会落地）
+  if (opacityDebounceTimer) clearTimeout(opacityDebounceTimer);
+  opacityDebounceTimer = setTimeout(() => api.invoke('control:set-opacity', val / 100), 80);
 });
 
 // Position sync from native drag
@@ -570,13 +580,21 @@ document.getElementById('infoBtn').addEventListener('click', () => {
 
 document.getElementById('closeModalBtn').addEventListener('click', () => {
   firstRunModal.style.display = 'none';
+  // 首次启动时公告可能被《使用须知》挡住，等用户关闭须知后再展示，避免公告丢失
+  if (pendingNotice) {
+    showNotice(pendingNotice);
+    pendingNotice = null;
+  }
 });
 
 // --- Notice Modal (GitHub Pages 远程公告) ---
 const noticeModal = document.getElementById('noticeModal');
 
-api.on('main:show-notice', (notice) => {
-  if (!notice) return;
+// 公告到达时若《使用须知》仍打开，则挂起等待（否则一旦 markSeen，
+// 本版本公告将永远无法再弹出）
+let pendingNotice = null;
+
+function showNotice(notice) {
   document.getElementById('noticeTitle').textContent = notice.title || '呆喵更新公告';
   document.getElementById('noticeVersion').textContent = 'v' + notice.version;
   document.getElementById('noticeTime').textContent = notice.time || '';
@@ -594,6 +612,15 @@ api.on('main:show-notice', (notice) => {
 
   // 公告已实际显示后，再通知主进程标记为已读（避免未显示就丢失）
   api.invoke('notice:dismiss', notice.version);
+}
+
+api.on('main:show-notice', (notice) => {
+  if (!notice) return;
+  if (firstRunModal.style.display === 'flex') {
+    pendingNotice = notice;
+    return;
+  }
+  showNotice(notice);
 });
 
 document.getElementById('noticeDismissBtn').addEventListener('click', () => {
@@ -626,9 +653,11 @@ function renderPersonalityCards(all) {
   grid.innerHTML = all.map(p => `
     <div class="persona-card${p.id === currentPersonalityId ? ' selected' : ''}" data-pid="${p.id}">
       <div class="persona-card-icon">${p.icon}</div>
-      <div class="persona-card-name">${p.name}</div>
-      <div class="persona-card-desc">${p.description}</div>
-      <div class="persona-card-tags">${p.tags.map(t => `<span class="persona-tag">${t}</span>`).join('')}</div>
+      <div class="persona-card-body">
+        <div class="persona-card-name">${p.name}</div>
+        <div class="persona-card-desc">${p.description}</div>
+        <div class="persona-card-tags">${p.tags.map(t => `<span class="persona-tag">${t}</span>`).join('')}</div>
+      </div>
     </div>
   `).join('');
 
@@ -649,9 +678,44 @@ function renderPersonalityCards(all) {
   });
 }
 
+// --- Life Tags Tab ---
+const ROMAN = ['', 'Ⅰ', 'Ⅱ', 'Ⅲ', 'Ⅳ', 'Ⅴ'];
+
+async function loadLifeTags() {
+  const tags = await api.invoke('life-tags:get-all');
+  const section = document.getElementById('lifetagsSection');
+  const grid = document.getElementById('lifetagsGrid');
+
+  // 只显示已解锁的词条；全部未解锁则隐藏整个栏目
+  const unlocked = (tags || []).filter(t => t.unlocked);
+  if (unlocked.length === 0) {
+    section.style.display = 'none';
+    return;
+  }
+  section.style.display = '';
+
+  // 词条卡片只显示图标、名字（含等级）、介绍
+  grid.innerHTML = unlocked.map(t => {
+    const levelText = t.type === 'level' && t.level > 0 ? ` <span class="tag-level">${ROMAN[t.level]}</span>` : '';
+    return `
+    <div class="tag-card">
+      <div class="tag-icon">${t.icon}</div>
+      <div class="tag-card-body">
+        <div class="tag-name">${t.name}${levelText}</div>
+        <div class="tag-desc">${t.description}</div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 // --- Init ---
 checkFirstRun();
 loadConfigToForm();
+// 面板刷新/重载后对齐真实运行状态（只有主进程知道截图循环是否在跑）
+(async () => {
+  const state = await api.invoke('control:get-state');
+  if (state && state.running) setRunningUI(true);
+})();
 // Load current personality for dashboard card
 (async () => {
   const current = await api.invoke('personality:get-current');

@@ -1,30 +1,93 @@
 {
-		"Version": 3,
-		"FileReferences": {
-			"Moc": "daimeow.moc3",
-			"Textures": [
-				"daimeow.2048/texture_00.png"
-			],
-			"Physics": "daimeow.physics3.json",
-			"DisplayInfo": "daimeow.cdi3.json",
-			"Expressions": [
-				{
-					"Name": "expression1",
-					"File": "expression1.exp3.json"
-				}
-			]
-		},
-		"Groups": [
+	"Version": 3,
+	"FileReferences": {
+		"Moc": "daimeow.moc3",
+		"Textures": [
+			"daimeow.2048/texture_00.png"
+		],
+		"Physics": "daimeow.physics3.json",
+		"DisplayInfo": "daimeow.cdi3.json",
+		"Expressions": [
 			{
-				"Target": "Parameter",
-				"Name": "EyeBlink",
-				"Ids": []
-			},
-			{
-				"Target": "Parameter",
-				"Name": "LipSync",
-				"Ids": []
+				"Name": "expression1",
+				"File": "expression1.exp3.json"
 			}
 		],
-		"HitAreas": []
-	}
+		"Motions": {
+			"Head": [
+				{
+					"File": "motions/nod.motion3.json",
+					"FadeInTime": 0.08,
+					"FadeOutTime": 0.15
+				},
+				{
+					"File": "motions/shake_head.motion3.json",
+					"FadeInTime": 0.08,
+					"FadeOutTime": 0.15
+				},
+				{
+					"File": "motions/look_up.motion3.json",
+					"FadeInTime": 0.4,
+					"FadeOutTime": 0.4
+				},
+				{
+					"File": "motions/look_down.motion3.json",
+					"FadeInTime": 0.4,
+					"FadeOutTime": 0.4
+				},
+				{
+					"File": "motions/look_left.motion3.json",
+					"FadeInTime": 0.45,
+					"FadeOutTime": 0.45
+				},
+				{
+					"File": "motions/look_right.motion3.json",
+					"FadeInTime": 0.45,
+					"FadeOutTime": 0.45
+				}
+			],
+			"Ear": [
+				{
+					"File": "motions/blink.motion3.json",
+					"FadeInTime": 0.02,
+					"FadeOutTime": 0.05
+				},
+				{
+					"File": "motions/ear_twitch.motion3.json",
+					"FadeInTime": 0.04,
+					"FadeOutTime": 0.1
+				}
+			],
+			"Emotion": [
+				{
+					"File": "motions/happy.motion3.json",
+					"FadeInTime": 0.12,
+					"FadeOutTime": 0.2
+				},
+				{
+					"File": "motions/surprised.motion3.json",
+					"FadeInTime": 0.05,
+					"FadeOutTime": 0.3
+				},
+				{
+					"File": "motions/sad.motion3.json",
+					"FadeInTime": 0.6,
+					"FadeOutTime": 0.7
+				}
+			]
+		}
+	},
+	"Groups": [
+		{
+			"Target": "Parameter",
+			"Name": "EyeBlink",
+			"Ids": []
+		},
+		{
+			"Target": "Parameter",
+			"Name": "LipSync",
+			"Ids": []
+		}
+	],
+	"HitAreas": []
+}

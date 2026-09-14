@@ -1,6 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const { app } = require('electron');
+const { writeJsonAtomic } = require('./atomic-file');
 
 const TOTALS_PATH = path.join(app.getPath('userData'), 'totals.json');
 
@@ -29,11 +30,11 @@ class StatsTracker {
 
   saveTotals() {
     try {
-      fs.writeFileSync(TOTALS_PATH, JSON.stringify({
+      writeJsonAtomic(TOTALS_PATH, {
         totalUptime: this.totalUptime,
         totalMessages: this.totalMessages,
         totalTokensAll: this.totalTokensAll,
-      }));
+      });
     } catch { /* ignore */ }
   }
 

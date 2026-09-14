@@ -23,7 +23,7 @@
         <button class="tab-btn" data-tab="personality"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="2"/></svg><span>人格</span></button>
       </div>
       <div class="version-text">
-        <span>v1.0.0</span>
+        <span>v1.1.1</span>
         <button class="info-btn" id="infoBtn" title="使用须知">!</button>
       </div>
     </nav>
@@ -160,6 +160,17 @@
             <input type="range" id="cfgInterval" min="1" max="60" value="5" class="slider">
             <span id="cfgIntervalVal">5s</span>
           </div>
+          <div class="form-group">
+            <label>场景识别频率</label>
+            <select id="cfgSceneSample" class="input">
+              <option value="1">每张图片都识别</option>
+              <option value="2">每 2 张识别一次</option>
+              <option value="3">每 3 张识别一次</option>
+              <option value="5">每 5 张识别一次</option>
+              <option value="10">每 10 张识别一次</option>
+            </select>
+            <span class="form-hint">场景识别与呆喵台词共用同一次请求，降低频率可减少资源占用</span>
+          </div>
           <button class="btn-primary" id="saveConfigBtn">保存配置</button>
         </div>
       </div>
@@ -192,6 +203,15 @@
           <div class="persona-preview" id="personaPreview" style="display:none;">
             <div class="persona-preview-label">试试看喵</div>
             <div class="persona-preview-text" id="personaPreviewText"></div>
+          </div>
+
+          <!-- 生活词条（位于人格页面下方，无解锁时整体隐藏） -->
+          <div id="lifetagsSection" style="display:none;">
+            <div class="lifetags-header" style="margin-top:24px;">
+              <h2 class="persona-title">生活词条</h2>
+              <p class="persona-subtitle">呆喵长期观察老大后，发现老大是什么样的人</p>
+            </div>
+            <div class="lifetags-grid" id="lifetagsGrid"></div>
           </div>
         </div>
       </div>
@@ -260,10 +280,9 @@
           <li>使用本软件即视为同意相关协议。</li>
         </ol>
         <p>祝您使用愉快！</p>
-        <p class="modal-feedback">反馈渠道：</p>
-        <p class="modal-sponsor">赞助：</p>
+        <p class="modal-feedback">反馈渠道：3389402102@qq.com</p>
       </div>
-      <button class="btn-primary" id="closeModalBtn">我知道了</button>
+      <button class="btn-primary" id="closeModalBtn" style="align-self:flex-end;">我知道了</button>
     </div>
   </div>
 

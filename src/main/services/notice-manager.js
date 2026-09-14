@@ -34,10 +34,9 @@ class NoticeManager {
       const isNew = this._compareVersions(data.version, lastNotice) > 0;
       const isForced = data.force === true;
 
-      // 版本不新且未强制 → 跳过
-      // force 公告也走版本去重：已显示过的 force 公告不再重复弹
-      if (!isNew && !isForced) return null;
-      if (isForced && !isNew) return null;
+      // 只按版本去重：已经显示过的公告（含 force）不再重复弹，
+      // force 仅作为标记透传给界面使用
+      if (!isNew) return null;
 
       return {
         version: data.version,

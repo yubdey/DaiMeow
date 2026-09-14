@@ -1,6 +1,11 @@
 const { desktopCapturer } = require('electron');
 
-async function captureScreen() {
+/**
+ * 抓取屏幕截图。
+ * @param {{ displayId?: string|number }} options displayId 指定截哪块屏（多显示器时用），
+ *        取不到对应源时退回第一个屏幕源。
+ */
+async function captureScreen(options = {}) {
   try {
     const sources = await desktopCapturer.getSources({
       types: ['screen'],
@@ -11,8 +16,9 @@ async function captureScreen() {
       throw new Error('No screen sources found');
     }
 
-    const primarySource = sources[0];
-    const image = primarySource.thumbnail;
+    const wanted = options.displayId != null ? String(options.displayId) : null;
+    const source = (wanted && sources.find((s) => String(s.display_id) === wanted)) || sources[0];
+    const image = source.thumbnail;
 
     // Resize to target width (maintains aspect ratio)
     const aspectRatio = image.getAspectRatio();

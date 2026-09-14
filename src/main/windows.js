@@ -70,7 +70,9 @@ function createPetWindow() {
   win.loadFile(path.join(__dirname, '..', 'renderer', 'pet', 'index.html'));
   // Apply saved always-on-top / passthrough / opacity settings
   win.setAlwaysOnTop(config.alwaysOnTop ?? true, 'screen-saver');
-  win.setIgnoreMouseEvents(config.mousePassthrough ?? true);
+  // 穿透默认关闭：默认打开会让呆喵点不中（点击落到后面的窗口），
+  // 这里与 config-store 的默认值保持一致
+  win.setIgnoreMouseEvents(config.mousePassthrough ?? false);
   if ((config.petOpacity ?? 1.0) < 1.0) {
     win.setOpacity(config.petOpacity);
   }

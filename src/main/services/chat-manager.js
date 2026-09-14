@@ -7,12 +7,25 @@ class ChatManager {
   }
 
   addMessage(msg) {
-    this.messages.push({
+    const entry = {
       ...msg,
       timestamp: Date.now(),
-    });
+    };
+    this.messages.push(entry);
     if (this.messages.length > MAX_MESSAGES) {
       this.messages.splice(0, this.messages.length - MAX_MESSAGES);
+    }
+    return entry;
+  }
+
+  /**
+   * 移除指定消息（用于请求失败时回滚已写入的用户消息）。
+   * 消息已被溢出清理时 indexOf 为 -1，幂等安全。
+   */
+  removeMessage(entry) {
+    const index = this.messages.indexOf(entry);
+    if (index !== -1) {
+      this.messages.splice(index, 1);
     }
   }
 

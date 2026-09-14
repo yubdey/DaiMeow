@@ -18,7 +18,9 @@ const { ModelServer } = require('./services/model-server');
 const { PersonalityManager } = require('./services/personality-manager');
 const { OllamaProvider } = require('./services/ollama-provider');
 const { GamepadPoller } = require('./services/gamepad-poller');
+const { PetDragController } = require('./services/pet-drag');
 const { NoticeManager } = require('./services/notice-manager');
+const { LifeTagsManager } = require('./services/life-tags-manager');
 const { save: saveConfig } = require('./services/config-store');
 
 let controlWindow = null;
@@ -33,10 +35,12 @@ const modelServer = new ModelServer();
 const personalityManager = new PersonalityManager();
 const ollamaProvider = new OllamaProvider();
 const noticeManager = new NoticeManager();
+const lifeTagsManager = new LifeTagsManager();
 let apiClient = null;
 let idleDetector = null;
 let mousePoller = null;
 let gamepadPoller = null;
+const petDragController = new PetDragController(() => petWindow, getConfig);
 let screenshotTimer = null;
 
 app.whenReady().then(async () => {
@@ -47,9 +51,25 @@ app.whenReady().then(async () => {
 
   loadConfig();
 
+  // 词条系统与历史运行总时长对齐，保证家里蹲的"总使用"和主页显示一致
+  lifeTagsManager.syncWithStatsTracker(statsTracker.totalUptime);
+  // 恢复上次选中的人格（配置在 app ready 后才加载，所以在这里同步）
+  personalityManager.loadFromConfig();
+
   controlWindow = createControlWindow();
   petWindow = createPetWindow();
   tray = createTray(controlWindow, (v) => { isQuitting = v; });
+
+  // 把桌宠窗口的显示/隐藏状态推给渲染层。
+  // 页面里的 document.hidden 在窗口「从未显示过」时不会翻转为 true（实测），
+  // 靠它判断"窗口是否可见"不可靠，所以待机动画改用这个显式信号。
+  const sendPetVisibility = (visible) => {
+    if (petWindow && !petWindow.isDestroyed()) {
+      petWindow.webContents.send('pet:visibility-changed', visible);
+    }
+  };
+  petWindow.on('show', () => sendPetVisibility(true));
+  petWindow.on('hide', () => sendPetVisibility(false));
 
   // Sync position sliders after native drag (debounced)
   let moveSaveTimer = null;
@@ -88,6 +108,8 @@ app.whenReady().then(async () => {
     getPersonalityManager: () => personalityManager,
     getOllamaProvider: () => ollamaProvider,
     getNoticeManager: () => noticeManager,
+    getLifeTagsManager: () => lifeTagsManager,
+    getPetDrag: () => petDragController,
     startMousePoller: () => {
       if (!mousePoller) {
         mousePoller = new MousePoller(petWindow, { intervalMs: 50 });
@@ -102,6 +124,7 @@ app.whenReady().then(async () => {
       if (mousePoller) { mousePoller.stop(); mousePoller = null; }
       if (gamepadPoller) { gamepadPoller.stop(); gamepadPoller = null; }
     },
+    isLoopRunning: () => screenshotTimer !== null,
     startLoop,
     stopLoop,
   });
@@ -128,6 +151,7 @@ app.on('before-quit', () => {
   chatManager.clear();
   if (mousePoller) { mousePoller.stop(); }
   if (gamepadPoller) { gamepadPoller.stop(); }
+  petDragController.stop();
   modelServer.stop();
 });
 app.on('activate', () => {
@@ -156,19 +180,27 @@ function startLoop() {
 
   statsTracker.start();
 
-  const intervalMs = config.screenshotInterval * 1000;
+  // 配置损坏或被人为改成 0 时不要退化成"疯狂截图"（会不停烧 API 额度）：夹在 1~600 秒
+  const intervalSec = Math.min(600, Math.max(1, parseInt(config.screenshotInterval, 10) || 5));
+  const intervalMs = intervalSec * 1000;
   runCycle();
   screenshotTimer = setInterval(runCycle, intervalMs);
 
   const statsTimer = setInterval(() => {
-    if (statsTracker.status === 'running') statsTracker.addUptime(1);
+    if (statsTracker.status === 'running') {
+      statsTracker.addUptime(1);
+      lifeTagsManager.tick(); // 词条时段统计（仅 running，idle 不计）
+    }
     if (controlWindow && !controlWindow.isDestroyed()) {
       controlWindow.webContents.send('main:stats-update', statsTracker.getStats());
     }
   }, 1000);
 
   // 统计累计值每 30 秒落盘一次（避免每秒同步写磁盘）
-  const flushTimer = setInterval(() => statsTracker.flush(), 30000);
+  const flushTimer = setInterval(() => {
+    statsTracker.flush();
+    lifeTagsManager.flush();
+  }, 30000);
 
   screenshotTimer._statsTimer = statsTimer;
   screenshotTimer._flushTimer = flushTimer;
@@ -184,12 +216,28 @@ function stopLoop() {
   }
   statsTracker.flush();
   statsTracker.stop();
+  lifeTagsManager.flush();
   // 注意：不在此停止 mousePoller/gamepadPoller。
   // 它们是视线追踪功能，与截图循环独立；stopLoop 会被 startLoop 开头调用，
   // 若在此停 poller 会把刚启动的追踪清掉。poller 仅在 control:stop / 退出时停。
 }
 
 let cycleRunning = false;
+let cycleIndex = 0;
+
+/** 呆喵当前所在显示器的 id（多显示器时决定截哪块屏；取不到返回 null，由截图侧回退） */
+function getPetDisplayId() {
+  try {
+    if (!petWindow || petWindow.isDestroyed()) return null;
+    const bounds = petWindow.getBounds();
+    return screen.getDisplayNearestPoint({
+      x: Math.round(bounds.x + bounds.width / 2),
+      y: Math.round(bounds.y + bounds.height / 2),
+    }).id;
+  } catch (err) {
+    return null;
+  }
+}
 
 async function runCycle() {
   if (cycleRunning) return;
@@ -197,8 +245,14 @@ async function runCycle() {
 
   cycleRunning = true;
   try {
-    const base64Image = await captureScreen();
-    const reply = await apiClient.sendScreenshot(base64Image);
+    // 场景识别与台词共用同一次请求；sceneSampleEvery 抽样可降低识别频率（默认每张都识别）
+    const every = Math.max(1, parseInt(getConfig().sceneSampleEvery, 10) || 1);
+    cycleIndex += 1;
+    const classifyScene = every === 1 || (cycleIndex - 1) % every === 0;
+
+    const base64Image = await captureScreen({ displayId: getPetDisplayId() });
+    const { reply, scene } = await apiClient.sendScreenshot(base64Image, { classifyScene });
+    if (scene) lifeTagsManager.recordScene(scene);
 
     if (controlWindow && !controlWindow.isDestroyed()) {
       controlWindow.webContents.send('main:new-response', {

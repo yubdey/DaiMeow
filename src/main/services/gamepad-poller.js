@@ -81,6 +81,10 @@ class GamepadPoller {
 
       this.proc.on('error', (err) => {
         console.error('[GamepadPoller] PowerShell error:', err.message);
+        // spawn 失败（如找不到 powershell）不会触发 exit，
+        // 这里必须复位状态，否则停止后无法再次启动轮询。
+        this.running = false;
+        this.proc = null;
       });
 
       // PowerShell 进程退出时重置状态（崩溃后允许重启）

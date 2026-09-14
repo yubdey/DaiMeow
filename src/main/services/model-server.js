@@ -23,10 +23,13 @@ class ModelServer {
       this.server = http.createServer((req, res) => {
         try {
           const url = new URL(req.url, 'http://localhost');
-          let filePath = path.join(MODEL_DIR, decodeURIComponent(url.pathname));
-
-          // Security: ensure path is within MODEL_DIR
-          if (!filePath.startsWith(MODEL_DIR)) {
+          // 只允许访问 MODEL_DIR 内部：先 resolve 归一化，
+          // 再检查目标必须等于根目录或位于根目录内（带路径分隔符边界，
+          // 防止 model-evil 这类“前缀相似”路径绕过检查）。
+          const rootDir = path.resolve(MODEL_DIR);
+          const relativePath = decodeURIComponent(url.pathname).replace(/^\/+/, '');
+          let filePath = path.resolve(rootDir, relativePath || '.');
+          if (filePath !== rootDir && !filePath.startsWith(rootDir + path.sep)) {
             res.writeHead(403);
             res.end('Forbidden');
             return;
