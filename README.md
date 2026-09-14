@@ -4,7 +4,7 @@
 
 [![Build](https://github.com/yubdey/DaiMeow/actions/workflows/build.yml/badge.svg)](https://github.com/yubdey/DaiMeow/actions/workflows/build.yml)
 [![Release](https://github.com/yubdey/DaiMeow/actions/workflows/build-release.yml/badge.svg)](https://github.com/yubdey/DaiMeow/actions/workflows/build-release.yml)
-[![Version](https://img.shields.io/badge/version-1.1.1-blue)](https://github.com/yubdey/DaiMeow/releases)
+[![Version](https://img.shields.io/badge/version-1.1.2-blue)](https://github.com/yubdey/DaiMeow/releases)
 
 # 呆喵 DaiMeow
 
@@ -41,8 +41,9 @@
 
 前往 [GitHub Releases](https://github.com/yubdey/DaiMeow/releases) 下载最新版本：
 
-- **`DaiMeow-vX.X.X-Windows-x64.zip`** —— 免安装绿色版，解压后直接运行 `DaiMeow.exe`
-- **`DaiMeow-Setup-vX.X.X-Windows-x64.exe`** —— 安装版，带开始菜单/桌面快捷方式
+- **`DaiMeow-vX.X.X-Windows-x64-unpacked.zip`** —— **解压即用版（推荐）**：解压出 `DaiMeow\` 文件夹，双击里面的 `DaiMeow.exe` 就能用，不装东西、启动也最快
+- **`DaiMeow-X.X.X-Windows-x64-portable.exe`** —— 单文件便携版：只有一个 exe，双击即用（每次启动会先解压到临时目录，启动略慢）
+- **`DaiMeow-Setup-X.X.X-Windows-x64.exe`** —— 安装版，带开始菜单/桌面快捷方式
 
 ### 系统要求
 
@@ -52,8 +53,8 @@
 
 ### 首次运行
 
-1. 解压 ZIP 或运行安装程序
-2. 双击 `DaiMeow.exe` 启动
+1. 解压「解压即用版」的 ZIP（或运行安装程序）
+2. 进入解压出来的 `DaiMeow\` 文件夹，双击 `DaiMeow.exe` 启动
 3. 首次启动会弹出《呆喵使用须知》，点击「我知道了」
 4. 进入「设置」面板，选择 AI 服务商并填入 API Key（或选择 Ollama 本地模型）
 5. 回到主页点击「呆喵？启动！」，呆喵出现在屏幕角落开始观察
@@ -69,7 +70,7 @@
 
 ### 如何更新到新版本
 
-下载新版本 ZIP，解压覆盖即可（配置和统计自动保留在 `%APPDATA%/daimeow/`）。或重新运行安装版 exe 覆盖安装。
+下载新版本的「解压即用版」ZIP，解压覆盖旧文件夹即可（配置和统计自动保留在 `%APPDATA%/daimeow/`）。或重新运行安装版 exe 覆盖安装。
 
 ---
 

@@ -42,25 +42,29 @@ jobs:
           Write-Host "生成的文件："
           $files | ForEach-Object { Write-Host "  $($_.Name) ($([math]::Round($_.Length/1MB,1)) MB)" }
 
-      - name: Pack portable exe into ZIP
+      # 解压即用版：把 electron-builder 生成的 win-unpacked 目录装进一个 DaiMeow\ 壳目录再压成 zip，
+      # 用户解压后直接双击 DaiMeow\DaiMeow.exe 即可（不必安装，也不用像单文件便携版那样每次启动解压到临时目录）
+      - name: Pack unpacked build into ZIP (解压即用版)
         run: |
-          $portable = Get-ChildItem release -Filter "DaiMeow-*-portable.exe" | Select-Object -First 1
-          if ($portable) {
-            $zipName = "DaiMeow-${{ github.ref_name }}-Windows-x64.zip"
-            Compress-Archive -Path $portable.FullName -DestinationPath "release/$zipName"
-            Write-Host "打包完成：release/$zipName"
-          } else {
-            # fallback：打包所有 exe
-            $zipName = "DaiMeow-${{ github.ref_name }}-Windows-x64.zip"
-            Compress-Archive -Path "release/*.exe" -DestinationPath "release/$zipName"
-          }
+          $stage = "release/DaiMeow"
+          if (Test-Path $stage) { Remove-Item $stage -Recurse -Force }
+          New-Item -ItemType Directory -Path $stage -Force | Out-Null
+          Copy-Item -Path "release/win-unpacked/*" -Destination $stage -Recurse -Force
+          if (-not (Test-Path "$stage/DaiMeow.exe")) { Write-Error "win-unpacked 缺少 DaiMeow.exe"; exit 1 }
+          $zipName = "DaiMeow-${{ github.ref_name }}-Windows-x64-unpacked.zip"
+          if (Test-Path "release/$zipName") { Remove-Item "release/$zipName" -Force }
+          Compress-Archive -Path $stage -DestinationPath "release/$zipName" -CompressionLevel Optimal
+          Write-Host "解压即用包完成：release/$zipName ($([math]::Round((Get-Item "release/$zipName").Length/1MB,1)) MB)"
+          Write-Host "解压后目录：DaiMeow\ （里面是 DaiMeow.exe 及其依赖）"
 
       - name: Upload artifacts
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@v4
         with:
           name: DaiMeow-build
-          path: release/*.exe
+          path: |
+            release/*.exe
+            release/*.zip
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
@@ -68,7 +72,7 @@ jobs:
         with:
           name: DaiMeow ${{ github.ref_name }}
           files: |
-            release/DaiMeow-*-Windows-x64.zip
+            release/DaiMeow-*-Windows-x64-unpacked.zip
             release/DaiMeow-Setup-*-Windows-x64.exe
             release/DaiMeow-*-Windows-x64-portable.exe
           generate_release_notes: true
