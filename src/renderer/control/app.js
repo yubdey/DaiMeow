@@ -65,7 +65,15 @@ function formatUptime(s) {
 }
 
 // --- Stats update listener ---
-api.on('main:stats-update', (stats) => {
+api.on('main:stats-update', (stats) => renderStats(stats));
+
+/**
+ * 把统计值画到首页。
+ * 循环跑起来之后主进程每秒推一次 main:stats-update；但没点「启动」时没有这个推送，
+ * 所以面板打开时还要用 control:get-stats 主动拉一次，否则首页会一直是占位的 0。
+ */
+function renderStats(stats) {
+  if (!stats) return;
   document.getElementById('statMessages').textContent = stats.messages;
   document.getElementById('statTokens').textContent = stats.tokens;
   document.getElementById('statMiniTotalMessages').textContent = stats.totalMessages ?? 0;
@@ -75,7 +83,7 @@ api.on('main:stats-update', (stats) => {
   const total = stats.totalMessages || 1;
   document.getElementById('statMiniAvgTokens').textContent = '~' + Math.round((stats.totalTokensAll || 0) / total);
   document.getElementById('statUptime').textContent = formatUptime(stats.uptime);
-});
+}
 
 // --- Status changes ---
 api.on('main:status-change', (status) => {
@@ -92,8 +100,43 @@ api.on('main:new-response', (msg) => {
 
 // --- Error handling ---
 api.on('main:error', (err) => {
-  showError(err.message);
+  showError(humanizeApiError(err.message));
 });
+
+/**
+ * 服务商返回的报错通常是「API 请求失败 (403): {"error":{...}}」这种一大段 JSON，
+ * 直接塞进提示条又长又难读。这里把常见的几种翻成一句中文，其余至少只留 message 字段。
+ * 只影响提示文案，请求逻辑不动。
+ */
+function humanizeApiError(raw) {
+  const text = String(raw || '');
+  const detail = (text.match(/"message"\s*:\s*"((?:[^"\\]|\\.)*)"/) || [])[1];
+  const status = (text.match(/\((\d{3})\)/) || [])[1] || '';
+  const code = (text.match(/"code"\s*:\s*"([^"]*)"/) || [])[1] || '';
+  const tag = status ? `（${status}）` : '';
+  const quota = /FreeTierOnly|AllocationQuota|Arrearage|quota|欠费|余额|free tier/i.test(text + code);
+
+  if (quota) {
+    return `服务商额度不足${tag}：请到控制台充值，或关闭「仅使用免费额度」模式；也可以换一个还有额度的视觉模型，或用本地 Ollama 模型`;
+  }
+  if (status === '401' || /invalid.{0,3}api.{0,3}key|Unauthorized/i.test(text)) {
+    return `API Key 无效或已过期${tag}：请在「设置」里重新填写并保存`;
+  }
+  if (status === '413') {
+    return `请求体过大${tag}：服务商在模型处理前拒绝了上传内容。请完全退出并重启呆喵以加载“仅上传本轮截图”的修复；若仍失败，请检查设置里的接口地址（DeepSeek 应使用 /v1/chat/completions）`;
+  }
+  if (status === '404') {
+    return `模型不存在或没有权限${tag}：请在「设置」的「视觉模型」里换一个`;
+  }
+  if (status === '429') {
+    return `请求太频繁或额度受限${tag}：稍后再试，或把「截图间隔」调大一点`;
+  }
+  if (/timeout|aborted|ECONN|ENOTFOUND|fetch failed|network/i.test(text)) {
+    return '网络不通或请求超时：检查网络／代理后重试';
+  }
+  if (detail) return detail.replace(/\\"/g, '"').slice(0, 140);
+  return text.slice(0, 140);
+}
 
 function showError(msg) {
   showToast('错误: ' + msg);
@@ -115,33 +158,36 @@ const PROVIDER_ENDPOINTS = {
 const PROVIDER_MODELS = {
   custom: [],
   moonshot: [
-    { name: 'Kimi K3', id: 'kimi-k3', inputPrice: '? 元/M tokens', outputPrice: '? 元/M tokens', cheap: false },
-    { name: 'Kimi K2.6', id: 'kimi-k2.6', inputPrice: '0.60 元/M tokens', outputPrice: '0.60 元/M tokens', cheap: true },
+    { name: 'Kimi K2.6', id: 'kimi-k2.6', inputPrice: '6.50 元/M tokens', outputPrice: '27.00 元/M tokens', note: '256K 上下文 · 支持图片/视频输入', cheap: true },
+    { name: 'Kimi K3', id: 'kimi-k3', inputPrice: '20.00 元/M tokens', outputPrice: '100.00 元/M tokens', note: '旗舰 · 1M 上下文 · 支持图片/视频输入', cheap: false },
+    { name: 'Kimi K2.7 Code 高速版', id: 'kimi-k2.7-code-highspeed', inputPrice: '13.00 元/M tokens', outputPrice: '54.00 元/M tokens', note: '代码向高速版 · 支持图片输入', cheap: false },
   ],
   volcano: [
-    { name: '豆包 Seed 2.0 Lite', id: 'doubao-seed-2-0-lite-260215', inputPrice: '? 元/M tokens', outputPrice: '? 元/M tokens', cheap: false },
-    { name: '豆包视觉 Lite', id: 'doubao-vision-lite-32k', inputPrice: '0.80 元/M tokens', outputPrice: '0.80 元/M tokens', cheap: true },
-    { name: '豆包视觉 Pro', id: 'doubao-vision-pro-32k', inputPrice: '3.00 元/M tokens', outputPrice: '3.00 元/M tokens', cheap: false },
+    { name: '豆包 Seed 2.1 Lite', id: 'doubao-seed-2.1-lite', inputPrice: '0.80 元/M tokens', outputPrice: '2.70 元/M tokens', note: '轻量 · 多模态理解', cheap: true },
+    { name: '豆包 Seed 2.1 Turbo', id: 'doubao-seed-2.1-turbo', inputPrice: '3.00 元/M tokens', outputPrice: '15.00 元/M tokens', note: '多模态理解 · 上下文 256K', cheap: false },
+    { name: '豆包 Seed 2.1 Pro', id: 'doubao-seed-2.1-pro', inputPrice: '6.00 元/M tokens', outputPrice: '30.00 元/M tokens', note: '旗舰 · 多模态理解 · 上下文 1M', cheap: false },
+    { name: '豆包 Seed Evolving', id: 'doubao-seed-evolving', inputPrice: '6.00 元/M tokens', outputPrice: '30.00 元/M tokens', note: '快速迭代版 · 多模态理解', cheap: false },
   ],
   alibaba: [
-    { name: 'Qwen3-VL-Flash', id: 'qwen3-vl-flash', inputPrice: '0.15 元/M tokens', outputPrice: '1.50 元/M tokens', cheap: true },
-    { name: 'Qwen2-VL-Plus', id: 'qwen-vl-plus', inputPrice: '0.80 元/M tokens', outputPrice: '2.00 元/M tokens', cheap: false },
-    { name: 'Qwen2-VL-Max', id: 'qwen-vl-max', inputPrice: '3.00 元/M tokens', outputPrice: '12.00 元/M tokens', cheap: false },
+    { name: 'Qwen3-VL-Flash', id: 'qwen3-vl-flash', inputPrice: '0.15 元/M tokens（≤32K）', outputPrice: '1.50 元/M tokens（≤32K）', note: '最省的视觉模型 · 32K 以上按 0.30 / 3.00 计', cheap: true },
+    { name: 'Qwen3-VL-Plus', id: 'qwen3-vl-plus', inputPrice: '1.00 元/M tokens（≤32K）', outputPrice: '10.00 元/M tokens（≤32K）', note: '均衡视觉模型 · 32K 以上按 1.50 / 15.00 计', cheap: false },
+    { name: 'Qwen3-VL 235B Instruct', id: 'qwen3-vl-235b-a22b-instruct', inputPrice: '以百炼官网为准', outputPrice: '以百炼官网为准', note: '开源版 235B · 指令版', cheap: false },
   ],
   zhipu: [
-    { name: 'GLM-4V-Plus', id: 'glm-4v-plus', inputPrice: '50.00 元/M tokens', outputPrice: '50.00 元/M tokens', cheap: false },
-    { name: 'GLM-4V', id: 'glm-4v', inputPrice: '5.00 元/M tokens', outputPrice: '5.00 元/M tokens', cheap: true },
+    { name: 'GLM-4.6V-FlashX', id: 'GLM-4.6V-FlashX', inputPrice: '0.15 元/M tokens（≤32K）', outputPrice: '1.50 元/M tokens（≤32K）', note: '最省 · 视觉理解', cheap: true },
+    { name: 'GLM-4.6V', id: 'GLM-4.6V', inputPrice: '1.00 元/M tokens（≤32K）', outputPrice: '3.00 元/M tokens（≤32K）', note: '均衡 · 支持工具调用', cheap: false },
+    { name: 'GLM-5V-Turbo', id: 'GLM-5V-Turbo', inputPrice: '5.00 元/M tokens（≤32K）', outputPrice: '22.00 元/M tokens（≤32K）', note: '旗舰多模态 · 32K 以上按 7.00 / 26.00 计', cheap: false },
+    { name: 'GLM-4.6V-Flash', id: 'GLM-4.6V-Flash', inputPrice: '免费', outputPrice: '免费', note: '免费视觉模型', cheap: false },
   ],
   siliconflow: [
-    { name: 'Qwen3-VL-8B', id: 'Qwen/Qwen3-VL-8B-Instruct', inputPrice: '0.50 元/M tokens', outputPrice: '2.00 元/M tokens', cheap: true },
-    { name: 'InternVL2-8B', id: 'OpenGVLab/InternVL2-8B', inputPrice: '0.50 元/M tokens', outputPrice: '0.50 元/M tokens', cheap: false },
-    { name: 'Qwen2-VL-72B', id: 'Qwen/Qwen2-VL-72B-Instruct', inputPrice: '4.00 元/M tokens', outputPrice: '4.00 元/M tokens', cheap: false },
+    { name: 'GLM-4.5V', id: 'zai-org/GLM-4.5V', inputPrice: '1.00 元/M tokens', outputPrice: '6.00 元/M tokens', note: '视觉理解 · 硅基流动托管', cheap: true },
+    { name: 'PaddleOCR-VL 1.5', id: 'PaddlePaddle/PaddleOCR-VL-1.5', inputPrice: '免费', outputPrice: '免费', note: 'OCR 专用，不适合看屏幕内容', cheap: false },
   ],
   deepseek: [
-    { name: 'DeepSeek V4-Flash-Vision', id: 'deepseek-v4-flash-vision-exp', inputPrice: '1.50 元/M tokens', outputPrice: '4.50 元/M tokens', cheap: true },
+    { name: 'DeepSeek Flash', id: 'deepseek-flash', inputPrice: '0.15 美元/M tokens（非高峰）', outputPrice: '0.60 美元/M tokens（非高峰）', note: '支持图片输入；高峰时段 0.30 / 1.20', cheap: true },
   ],
   mimo: [
-    { name: 'MiMo V2.5', id: 'MiMo-V2.5', inputPrice: '? 元/M tokens', outputPrice: '? 元/M tokens', cheap: true },
+    { name: 'MiMo V2.6', id: 'MiMo-V2.6', inputPrice: '订阅制（Token Plan）', outputPrice: '订阅制（Token Plan）', note: '旗舰全模态 · 按订阅额度计费，不按 token 计价', cheap: false },
   ],
   other: [],
 };
@@ -198,6 +244,7 @@ function populateModels(provider, currentModel) {
           <div class="tooltip-row"><span>模型ID:</span> ${m.id}</div>
           <div class="tooltip-row"><span>输入价格:</span> ${m.inputPrice}</div>
           <div class="tooltip-row"><span>输出价格:</span> ${m.outputPrice}</div>
+          ${m.note ? `<div class="tooltip-row"><span>说明:</span> ${m.note}</div>` : ''}
         </div>
       </div>
     </div>
@@ -328,6 +375,27 @@ function loadApiKeyForProvider(providerId) {
   document.getElementById('cfgApiKey').value = key;
 }
 
+// 「调整」面板里的桌宠位置/尺寸/开关，统一由这里写入。
+// 载入配置时用一次，主进程通过 main:config-sync 推送变更时（例如桌宠右键菜单改的）再用一次。
+function applyEditPanel(config) {
+  if (!config) return;
+  document.getElementById('editPosX').value = Math.round((config.petPositionX ?? 0) * 100);
+  document.getElementById('editPosXVal').textContent = Math.round((config.petPositionX ?? 0) * 100) + '%';
+  document.getElementById('editPosY').value = Math.round((config.petPositionY ?? 0.5) * 100);
+  document.getElementById('editPosYVal').textContent = Math.round((config.petPositionY ?? 0.5) * 100) + '%';
+  // 显示值 = 实际缩放 × 2（例如实际 0.5x 显示为 1.0x，实际 0.25x 显示为 0.5x）
+  const scale = Math.round(((config.petScale ?? 0.5) / 0.5) * 100);
+  document.getElementById('editScale').value = scale;
+  document.getElementById('editScaleVal').textContent = (scale / 100).toFixed(1) + 'x';
+
+  document.getElementById('editFixedPosition').checked = config.fixedPosition || false;
+  document.getElementById('editMousePassthrough').checked = config.mousePassthrough ?? false;
+  document.getElementById('editAlwaysOnTop').checked = config.alwaysOnTop ?? true;
+  const opacity = Math.round((config.petOpacity ?? 1.0) * 100);
+  document.getElementById('editOpacity').value = opacity;
+  document.getElementById('editOpacityVal').textContent = opacity + '%';
+}
+
 async function loadConfigToForm() {
   const config = await api.invoke('control:get-config');
   if (!config) return;
@@ -340,8 +408,8 @@ async function loadConfigToForm() {
   document.getElementById('cfgTemperature').value = config.temperature ?? 0.6;
   cfgEndpoint.value = isOllama ? (config.ollamaEndpoint || 'http://127.0.0.1:11434') : (config.apiEndpoint || '');
   cfgOllamaEndpoint.value = config.ollamaEndpoint || 'http://127.0.0.1:11434';
-  cfgInterval.value = config.screenshotInterval || 5;
-  cfgIntervalVal.textContent = (config.screenshotInterval || 5) + 's';
+  cfgInterval.value = config.screenshotInterval || 10;
+  cfgIntervalVal.textContent = (config.screenshotInterval || 10) + 's';
   cfgSceneSample.value = String(config.sceneSampleEvery || 1);
 
   // Toggle visibility
@@ -369,22 +437,7 @@ async function loadConfigToForm() {
   }
 
   // Edit panel
-  document.getElementById('editPosX').value = Math.round((config.petPositionX ?? 0) * 100);
-  document.getElementById('editPosXVal').textContent = Math.round((config.petPositionX ?? 0) * 100) + '%';
-  document.getElementById('editPosY').value = Math.round((config.petPositionY ?? 0.5) * 100);
-  document.getElementById('editPosYVal').textContent = Math.round((config.petPositionY ?? 0.5) * 100) + '%';
-  // 显示值 = 实际缩放 × 2（例如实际 0.5x 显示为 1.0x，实际 0.25x 显示为 0.5x）
-  const scale = Math.round(((config.petScale ?? 0.5) / 0.5) * 100);
-  document.getElementById('editScale').value = scale;
-  document.getElementById('editScaleVal').textContent = (scale / 100).toFixed(1) + 'x';
-
-  // New controls
-  document.getElementById('editFixedPosition').checked = config.fixedPosition || false;
-  document.getElementById('editMousePassthrough').checked = config.mousePassthrough ?? false;
-  document.getElementById('editAlwaysOnTop').checked = config.alwaysOnTop ?? true;
-  const opacity = Math.round((config.petOpacity ?? 1.0) * 100);
-  document.getElementById('editOpacity').value = opacity;
-  document.getElementById('editOpacityVal').textContent = opacity + '%';
+  applyEditPanel(config);
 }
 
 document.getElementById('saveConfigBtn').addEventListener('click', async () => {
@@ -454,6 +507,8 @@ document.getElementById('editScale').addEventListener('input', (e) => {
 
 // Reset to defaults
 document.getElementById('resetEditBtn').addEventListener('click', async () => {
+  // 位置/大小/透明度/三个开关全部由主进程的 control:reset-pet-defaults 一次做完
+  // （桌宠右键菜单的「恢复默认」走的是同一套逻辑，这里不再重复下发单项设置）
   await api.invoke('control:reset-pet-defaults');
   document.getElementById('editPosX').value = 0;
   document.getElementById('editPosXVal').textContent = '0%';
@@ -466,10 +521,6 @@ document.getElementById('resetEditBtn').addEventListener('click', async () => {
   document.getElementById('editFixedPosition').checked = false;
   document.getElementById('editMousePassthrough').checked = false;
   document.getElementById('editAlwaysOnTop').checked = true;
-  api.invoke('control:set-opacity', 1.0);
-  api.invoke('control:set-fixed-position', false);
-  api.invoke('control:set-passthrough', false);
-  api.invoke('control:set-topmost', true);
   showToast('已恢复默认');
 });
 
@@ -508,6 +559,9 @@ api.on('main:position-sync', (pos) => {
   document.getElementById('editPosY').value = pos.y;
   document.getElementById('editPosYVal').textContent = pos.y + '%';
 });
+
+// 主进程改了桌宠设置（目前只有桌宠右键菜单会这样）时同步面板，避免显示与实际不一致
+api.on('main:config-sync', (config) => applyEditPanel(config));
 
 
 function debounceUpdatePetPosition() {
@@ -711,6 +765,10 @@ async function loadLifeTags() {
 // --- Init ---
 checkFirstRun();
 loadConfigToForm();
+// 打开面板先把已有的统计拉一次（累计数据与"循环是否在跑"无关，不该等到点启动才显示）
+(async () => {
+  renderStats(await api.invoke('control:get-stats'));
+})();
 // 面板刷新/重载后对齐真实运行状态（只有主进程知道截图循环是否在跑）
 (async () => {
   const state = await api.invoke('control:get-state');

@@ -4,7 +4,10 @@ const { createControlWindow, createPetWindow } = require('./windows');
 // Fix taskbar icon association on Windows.
 // Without an AppUserModelID, Windows cannot reliably associate the window
 // with an icon when launched via `npx electron .`, showing a generic icon.
-app.setAppUserModelId('com.daimeow.desktop');
+// 这个值必须和 package.json 的 build.appId 完全一致：Windows 靠它把「固定到任务栏的
+// 快捷方式」和「运行中的窗口」归成同一个图标。electron-builder 用的就是 appId，
+// 两边不一致时可能出现两个图标。改这里，不要改 appId（appId 变了老用户没法覆盖升级）。
+app.setAppUserModelId('com.yubdey.daimeow');
 const { createTray } = require('./tray');
 const { registerIpcHandlers } = require('./ipc-handlers');
 const { load: loadConfig, getAll: getConfig } = require('./services/config-store');
@@ -103,30 +106,48 @@ app.whenReady().then(async () => {
 
   registerIpcHandlers({
     getPetWindow: () => petWindow,
+    getControlWindow: () => controlWindow,
     getChatManager: () => chatManager,
     getModelServer: () => modelServer,
     getPersonalityManager: () => personalityManager,
     getOllamaProvider: () => ollamaProvider,
     getNoticeManager: () => noticeManager,
     getLifeTagsManager: () => lifeTagsManager,
+    getStatsTracker: () => statsTracker,
     getPetDrag: () => petDragController,
     startMousePoller: () => {
       if (!mousePoller) {
         mousePoller = new MousePoller(petWindow, { intervalMs: 50 });
         mousePoller.start();
       }
-      if (!gamepadPoller) {
-        gamepadPoller = new GamepadPoller(petWindow);
-        gamepadPoller.start();
-      }
+      // 手柄支持默认关闭（config.gamepadEnabled）。开启时也不直接起 XInput 轮询：
+      // 先让渲染层用 Chromium 自带的 Gamepad API 探一下有没有真手柄，
+      // 探到了（pet:gamepad-presence）才起那个常驻 PowerShell 进程。
+      // 注意：探测的触发点在 startLoop() 里 —— 这里（control:start 中途）循环还没起来，
+      // 判断"是否已启动"会永远为假，探测就发不出去。
+    },
+    startGamepadPoller: () => {
+      if (gamepadPoller || !petWindow || petWindow.isDestroyed()) return;
+      console.log('[Gamepad] 检测到手柄，启动 XInput 轮询');
+      gamepadPoller = new GamepadPoller(petWindow);
+      gamepadPoller.start();
     },
     stopPollers: () => {
       if (mousePoller) { mousePoller.stop(); mousePoller = null; }
       if (gamepadPoller) { gamepadPoller.stop(); gamepadPoller = null; }
+      if (petWindow && !petWindow.isDestroyed()) {
+        petWindow.webContents.send('pet:gamepad-probe', false);
+      }
     },
     isLoopRunning: () => screenshotTimer !== null,
     startLoop,
     stopLoop,
+    // 桌宠右键菜单里的「退出呆喵」：跟托盘退出走同一条路径，
+    // 必须先置 isQuitting，否则控制窗口的 close 拦截会把退出吃掉。
+    quitApp: () => {
+      isQuitting = true;
+      app.quit();
+    },
   });
 
   controlWindow.on('close', (e) => {
@@ -168,7 +189,8 @@ function startLoop() {
   stopLoop();
 
   idleDetector = new IdleDetector({
-    threshold: 60,
+    // 无操作多久算闲置（秒）：180 = 3 分钟。闲置时会暂停截图循环，也不计入使用时长
+    threshold: 180,
     onIdleChange: (idle) => {
       statsTracker.setIdle(idle);
       if (controlWindow && !controlWindow.isDestroyed()) {
@@ -181,10 +203,16 @@ function startLoop() {
   statsTracker.start();
 
   // 配置损坏或被人为改成 0 时不要退化成"疯狂截图"（会不停烧 API 额度）：夹在 1~600 秒
-  const intervalSec = Math.min(600, Math.max(1, parseInt(config.screenshotInterval, 10) || 5));
+  const intervalSec = Math.min(600, Math.max(1, parseInt(config.screenshotInterval, 10) || 10));
   const intervalMs = intervalSec * 1000;
   runCycle();
   screenshotTimer = setInterval(runCycle, intervalMs);
+
+  // 手柄支持（默认关闭）：开关打开时，让渲染层用 Chromium 自带的 Gamepad API 探测有没有真手柄；
+  // 只有探到手柄（pet:gamepad-presence）才会去起 XInput 轮询那个常驻 PowerShell 进程。
+  if (getConfig().gamepadEnabled === true && petWindow && !petWindow.isDestroyed()) {
+    petWindow.webContents.send('pet:gamepad-probe', true);
+  }
 
   const statsTimer = setInterval(() => {
     if (statsTracker.status === 'running') {

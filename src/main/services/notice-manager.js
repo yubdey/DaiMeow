@@ -1,7 +1,7 @@
 const { getAll, save } = require('./config-store');
 
 // 远程公告地址（GitHub Pages），唯一配置点，方便以后修改
-const NOTICE_URL = 'https://qq3389402102-maker.github.io/DaiMeow/notice.json';
+const NOTICE_URL = 'https://yubdey.github.io/DaiMeow/notice.json';
 
 // 网络超时（毫秒）——最多等待数秒，超时即放弃，绝不阻塞启动
 const REQUEST_TIMEOUT = 5000;

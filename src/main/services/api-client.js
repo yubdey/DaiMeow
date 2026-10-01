@@ -104,16 +104,24 @@ class ApiClient {
     };
 
     // Store user msg for history display（请求失败时回滚，避免残留未应答消息）
-    const storedUserMsg = this.chatManager.addMessage(userMsg);
+    // hideText：这句提示词只在请求里出现，不在「记录」面板里显示
+    const storedUserMsg = this.chatManager.addMessage(userMsg, { hideText: true });
 
     // Send system prompt + last 3 exchanges (6 messages) + current screenshot
+    // 只有本轮（最后一条）带截图：更早的截图不再重复塞进请求里（省 Vision Token 和上传流量），
+    // 但它们的文字内容照旧保留，模型仍然拿得到对话上下文。
     const allHistory = this._filterHistory();
-    const recentHistory = allHistory.slice(-6).map(m => {
+    const recentHistory = allHistory.slice(-6).map((m, i, arr) => {
+      const isCurrent = i === arr.length - 1;
       if (m.role === 'assistant' && typeof m.content === 'string') {
         return { ...m, content: m.content.slice(0, 25) };
       }
+      if (!isCurrent && m.role === 'user' && Array.isArray(m.content)) {
+        const textParts = m.content.filter(c => c.type === 'text');
+        return textParts.length ? { ...m, content: textParts } : null;
+      }
       return m;
-    }); // last 3 pairs, assistant replies truncated
+    }).filter(Boolean); // last 3 pairs, assistant replies truncated, 历史截图已剔除
     const messages = ApiClient.attachSceneNote([
       { role: 'system', content: this.getSystemPrompt() },
       ...recentHistory,
@@ -200,11 +208,12 @@ class ApiClient {
     };
 
     // Store for history display (text-only version)（请求失败时回滚）
-    const storedUserMsg = this.chatManager.addMessage(userMsg);
+    // hideText：这句提示词只在请求里出现，不在「记录」面板里显示
+    const storedUserMsg = this.chatManager.addMessage(userMsg, { hideText: true });
 
     // Build message history
     const allHistory = this._filterHistory();
-    const recentHistory = allHistory.slice(-6).map(m => {
+    const recentHistory = allHistory.slice(-6).map((m, i, arr) => {
       // Convert OpenAI-format content (array) to Ollama string
       let content = m.content;
       if (Array.isArray(content)) {
@@ -217,9 +226,9 @@ class ApiClient {
       if (m.role === 'assistant' && typeof content === 'string') {
         content = content.slice(0, 25);
       }
-      // Preserve images for user messages, strip for assistant
+      // 只有本轮（最后一条）带图；历史消息只留文字，避免重复上传整张截图
       const msg = { role: m.role, content };
-      if (m.role === 'user' && m.images) {
+      if (m.role === 'user' && m.images && i === arr.length - 1) {
         msg.images = m.images;
       }
       return msg;

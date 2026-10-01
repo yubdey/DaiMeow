@@ -2,7 +2,7 @@ const { powerMonitor } = require('electron');
 
 class IdleDetector {
   constructor(options = {}) {
-    this.threshold = options.threshold || 60; // seconds
+    this.threshold = options.threshold || 180; // seconds（3 分钟无操作算闲置）
     this.isIdle = false;
     this.interval = null;
     this.onIdleChange = options.onIdleChange || null;

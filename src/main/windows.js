@@ -23,17 +23,25 @@ function createControlWindow() {
     },
   });
 
-  // Save bounds on resize/move
+  // Save bounds on resize/move（300ms 防抖：拖窗口时会连续触发 resize/move，
+  // 每次保存都要重新加密 API Key 并写盘，防抖后一次拖动只落一次盘）
   const { save } = require('./services/config-store');
+  let boundsTimer = null;
   const saveBounds = () => {
     if (!win.isDestroyed() && !win.isMinimized()) {
       const { width, height } = win.getBounds();
       save({ winBounds: { width, height } });
     }
   };
-  win.on('resize', saveBounds);
-  win.on('move', saveBounds);
+  const saveBoundsDebounced = () => {
+    if (boundsTimer) clearTimeout(boundsTimer);
+    boundsTimer = setTimeout(() => { boundsTimer = null; saveBounds(); }, 300);
+  };
+  win.on('resize', saveBoundsDebounced);
+  win.on('move', saveBoundsDebounced);
+  // 关窗口时立刻落一次，别等防抖
   win.on('close', saveBounds);
+  win.on('closed', () => { if (boundsTimer) { clearTimeout(boundsTimer); boundsTimer = null; } });
 
   win.loadFile(path.join(__dirname, '..', 'renderer', 'control', 'index.html'));
   win.setMenuBarVisibility(false);

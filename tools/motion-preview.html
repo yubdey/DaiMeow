@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>呆喵 · 动作预览</title>
+<style>
+  :root {
+    --bg: #F0F7FF;
+    --card: #fff;
+    --text: #1A2A3A;
+    --text-2: #6B8299;
+    --text-3: #9AACBE;
+    --accent: #4A9EFF;
+    --accent-strong: #2E8BEF;
+    --accent-soft: #E8F2FD;
+    --border: #E8EDF2;
+    --border-strong: #D9E3ED;
+    --radius: 20px;
+    --radius-sm: 12px;
+    --warn: #E8892B;
+    --bad: #E5534B;
+    --ok: #22A06B;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Microsoft YaHei', 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg); color: var(--text);
+    height: 100vh; display: flex; flex-direction: column; overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 18px; background: var(--card); border-bottom: 1px solid var(--border);
+  }
+  header h1 { font-size: 16px; font-weight: 700; }
+  header .sub { font-size: 12px; color: var(--text-3); }
+  header .grow { flex: 1; }
+  button {
+    font-family: inherit; font-size: 13px; cursor: pointer;
+    border: 1px solid var(--border-strong); background: var(--card); color: var(--text-2);
+    border-radius: var(--radius-sm); padding: 7px 14px; transition: all .15s ease;
+  }
+  button:hover { border-color: var(--accent); color: var(--accent-strong); background: #F7FAFE; }
+  button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  main { flex: 1; display: flex; min-height: 0; }
+  #stageWrap {
+    flex: 1; position: relative; min-width: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #stage { display: block; width: 100%; height: 100%; }
+  #propLeft, #propRight, #propChips, #propPig, #propGamepad, #propChip, #propHandLeft, #propHandRight {
+    position: absolute; width: 0; transform: translate(-50%, -50%);
+    opacity: 0; transition: opacity .2s ease; pointer-events: none;
+  }
+  #propLeft.show, #propRight.show, #propChips.show, #propPig.show, #propGamepad.show, #propChip.show, #propHandLeft.show, #propHandRight.show { opacity: 1; }
+  #hint {
+    position: absolute; left: 14px; bottom: 12px; font-size: 12px; color: var(--text-3);
+    background: rgba(255,255,255,.86); border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px;
+  }
+  aside {
+    width: 330px; flex-shrink: 0; background: var(--card); border-left: 1px solid var(--border);
+    overflow-y: auto; padding: 16px;
+  }
+  aside h2 { font-size: 12px; font-weight: 700; color: var(--text-3); letter-spacing: .4px; margin: 14px 0 8px; }
+  aside h2:first-child { margin-top: 0; }
+  .acts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .acts button { padding: 8px 12px; }
+  .acts button.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .acts button small { display: block; font-size: 10px; opacity: .65; font-weight: 400; }
+  #detail { margin-top: 6px; font-size: 12px; color: var(--text-2); line-height: 1.7; }
+  #detail .name { font-size: 14px; font-weight: 700; color: var(--text); }
+  #detail table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 11px; }
+  #detail th, #detail td { text-align: left; padding: 3px 4px; border-bottom: 1px solid var(--border); }
+  #detail th { color: var(--text-3); font-weight: 600; }
+  #detail td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .warn { color: var(--warn); }
+  .bad { color: var(--bad); font-weight: 600; }
+  .ok { color: var(--ok); }
+  #issues { margin-top: 8px; }
+  #issues div { font-size: 11px; line-height: 1.6; }
+  label.chk { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); margin-top: 10px; cursor: pointer; }
+  #err { display: none; color: var(--bad); font-size: 13px; padding: 14px 18px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>呆喵 · 动作预览</h1>
+    <span class="sub">点动作就能播；改完 model/daimeow/motions 里的文件，回这里按 F5 即可</span>
+    <span class="grow"></span>
+    <button id="playAll">▶ 全部依次播放</button>
+    <button id="reload">↻ 刷新页面</button>
+  </header>
+  <div id="err"></div>
+  <main>
+    <div id="stageWrap">
+      <canvas id="stage"></canvas>
+      <img id="propLeft" alt="">
+      <img id="propRight" alt="">
+      <img id="propChips" alt="">
+      <img id="propPig" alt="">
+      <img id="propGamepad" alt="">
+      <img id="propHandLeft" alt="">
+      <img id="propHandRight" alt="">
+      <img id="propChip" alt="">
+      <div id="hint">空格 = 重播当前动作　← → = 上一个 / 下一个</div>
+    </div>
+    <aside>
+      <h2>动作（Motions）</h2>
+      <div class="acts" id="motionList"></div>
+      <h2>坐姿（表情通道）</h2>
+      <div class="acts">
+        <button data-expr="sit">坐下 <small>expression1</small></button>
+        <button data-expr="stand">站起 <small>取消表情</small></button>
+      </div>
+      <label class="chk"><input type="checkbox" id="showProps" checked> 显示手上道具（啦啦球 / 薯片袋）</label>
+      <h2>当前动作</h2>
+      <div id="detail">还没有播放任何动作。</div>
+    </aside>
+  </main>
+  <script src="/src/renderer/pet/live2dcubismcore.js"></script>
+  <script src="/tools/preview-bundle.js"></script>
+</body>
+</html>

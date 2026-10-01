@@ -13,7 +13,7 @@ const DEFAULTS = {
   model: '',
   providerType: 'api',
   ollamaEndpoint: 'http://127.0.0.1:11434',
-  screenshotInterval: 5,
+  screenshotInterval: 10,
   sceneSampleEvery: 1,
   maxTokens: 60,
   temperature: 0.6,
@@ -24,6 +24,9 @@ const DEFAULTS = {
   mousePassthrough: false,
   petOpacity: 1.0,
   alwaysOnTop: true,
+  // 手柄支持默认关闭：开启后也要等渲染层用它自带的 Gamepad API 探到真手柄，
+  // 主进程才会起 XInput 轮询（那个轮询是一个常驻 PowerShell 进程，约 75MB）。
+  gamepadEnabled: false,
   personality: 'energetic',
   winBounds: null,
   firstRunComplete: false,

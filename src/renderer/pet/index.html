@@ -12,13 +12,29 @@
       background: transparent;
     }
     canvas { display: block; width: 100%; height: 100%; pointer-events: none; }
+    /* 啦啦球：两张透明 PNG，位置每帧由 pet-app-esm.js 贴到左右手上 */
+    .prop {
+      position: fixed; left: 0; top: 0; width: 0;
+      transform: translate(-50%, -50%);
+      opacity: 0; transition: opacity 0.22s ease;
+      pointer-events: none;
+      -webkit-user-drag: none;
+    }
+    .prop.show { opacity: 1; }
     #speech-bubble {
       position: fixed;
+      /* left 固定为 0：fixed 元素的可用宽度 = 视口宽 - left，写 0 才能让换行
+         只受 maxWidth 控制（水平位置由 JS 用 transform 平移，见 pet-app-esm.js） */
+      left: 0;
       transform: translateX(-50%);
+      /* --bubble-k：气泡整体缩放系数，由 JS 按窗口宽度设置（1 = 1.0x 显示时的原始尺寸）。
+         基准值只写在这里，JS 只改这一个系数。 */
+      --bubble-k: 1;
       background: rgba(255,255,255,0.92); color: #1a2a3a;
-      padding: 10px 16px; border-radius: 20px;
+      padding: calc(10px * var(--bubble-k)) calc(16px * var(--bubble-k));
+      border-radius: calc(20px * var(--bubble-k));
       font-family: 'Microsoft YaHei', 'Segoe UI', sans-serif;
-      font-size: 13px;
+      font-size: calc(13px * var(--bubble-k));
       text-align: center;
       pointer-events: none; opacity: 0; transition: opacity 0.3s;
       box-shadow: 0 2px 8px rgba(0,0,0,0.1);
@@ -28,18 +44,27 @@
     #speech-bubble.show { opacity: 1; }
     #speech-bubble::after {
       content: '';
-      position: absolute; bottom: -6px; left: 50%;
+      position: absolute; bottom: calc(-6px * var(--bubble-k)); left: 50%;
       transform: translateX(-50%);
       width: 0; height: 0;
-      border-left: 6px solid transparent;
-      border-right: 6px solid transparent;
-      border-top: 6px solid rgba(255,255,255,0.92);
+      border-left: calc(6px * var(--bubble-k)) solid transparent;
+      border-right: calc(6px * var(--bubble-k)) solid transparent;
+      border-top: calc(6px * var(--bubble-k)) solid rgba(255,255,255,0.92);
     }
   </style>
 </head>
 <body>
   <canvas id="petCanvas"></canvas>
   <div id="speech-bubble"></div>
+  <img id="prop-left" class="prop" src="assets/pompom_yellow.png" alt="">
+  <img id="prop-right" class="prop" src="assets/pompom_pink.png" alt="">
+  <!-- 吃薯片：DOM 顺序即层级 —— 袋子在最下、上面是那片薯片、最上面是两只手 -->
+  <img id="prop-chips" class="prop" src="assets/chips.png" alt="">
+  <img id="prop-pig" class="prop" src="assets/pig.png" alt="">
+  <img id="prop-gamepad" class="prop" src="assets/gamepad.png" alt="">
+  <img id="prop-hand-left" class="prop" src="assets/hand_left.png" alt="">
+  <img id="prop-hand-right" class="prop" src="assets/hand_right.png" alt="">
+  <img id="prop-chip" class="prop" src="assets/chip.png" alt="">
   <script src="live2dcubismcore.js"></script>
   <script src="pet-bundle.js"></script>
 </body>

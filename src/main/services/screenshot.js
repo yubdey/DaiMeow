@@ -20,14 +20,16 @@ async function captureScreen(options = {}) {
     const source = (wanted && sources.find((s) => String(s.display_id) === wanted)) || sources[0];
     const image = source.thumbnail;
 
-    // Resize to target width (maintains aspect ratio)
-    const aspectRatio = image.getAspectRatio();
-    let targetWidth = 480;
-    let targetHeight = Math.round(targetWidth / aspectRatio);
-    const resized = image.resize({ width: targetWidth, height: targetHeight });
+    // 只在宽度超过目标值时才缩，避免把低分辨率截图放大。
+    // 典型情况：1707×960 的屏 → 缩略图 480×270，不缩；竖屏显示器（如 1080×1920）
+    // 的缩略图只有 152×270，如果按 width:480 去缩会被放大成 480×854，又大又糊。
+    const TARGET_WIDTH = 480;
+    const jpegSource = image.getSize().width > TARGET_WIDTH
+      ? image.resize({ width: TARGET_WIDTH, height: Math.round(TARGET_WIDTH / image.getAspectRatio()) })
+      : image;
 
     // JPEG compress at quality 65
-    const jpegBuffer = resized.toJPEG(65);
+    const jpegBuffer = jpegSource.toJPEG(65);
     const base64 = jpegBuffer.toString('base64');
 
     return `data:image/jpeg;base64,${base64}`;

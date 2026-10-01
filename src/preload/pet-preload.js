@@ -12,6 +12,13 @@ contextBridge.exposeInMainWorld('petAPI', {
   onGamepadPosition: (callback) => {
     ipcRenderer.on('pet:gamepad-pos', (event, pos) => callback(pos));
   },
+  // 手柄探测开关：主进程在「开启手柄支持 + 已启动」时下发 true，停止时下发 false
+  onGamepadProbe: (callback) => {
+    ipcRenderer.on('pet:gamepad-probe', (event, enabled) => callback(enabled));
+  },
+  reportGamepadPresence: (hasGamepad) => {
+    ipcRenderer.send('pet:gamepad-presence', hasGamepad === true);
+  },
   onShowSpeech: (callback) => {
     ipcRenderer.on('pet:show-speech', (event, text) => callback(text));
   },
@@ -38,6 +45,11 @@ contextBridge.exposeInMainWorld('petAPI', {
   // 窗口显示/隐藏（主进程在 show/hide 时下发；页面初始按隐藏处理）
   onVisibilityChanged: (callback) => {
     ipcRenderer.on('pet:visibility-changed', (event, visible) => callback(visible));
+  },
+
+  // 右键菜单：菜单本体在主进程用原生 Menu 弹出（桌宠窗口太小，页面里画会被裁掉）
+  openContextMenu: () => {
+    ipcRenderer.send('pet:context-menu');
   },
 
   notifyReady: (width, height) => {
