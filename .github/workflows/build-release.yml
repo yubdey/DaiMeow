@@ -75,6 +75,6 @@ jobs:
             release/DaiMeow-*-Windows-x64-unpacked.zip
             release/DaiMeow-Setup-*-Windows-x64.exe
             release/DaiMeow-*-Windows-x64-portable.exe
-          generate_release_notes: true
+          body_path: release-notes/${{ github.ref_name }}.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

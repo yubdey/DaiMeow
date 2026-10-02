@@ -4,7 +4,7 @@
 
 [![Build](https://github.com/yubdey/DaiMeow/actions/workflows/build.yml/badge.svg)](https://github.com/yubdey/DaiMeow/actions/workflows/build.yml)
 [![Release](https://github.com/yubdey/DaiMeow/actions/workflows/build-release.yml/badge.svg)](https://github.com/yubdey/DaiMeow/actions/workflows/build-release.yml)
-[![Version](https://img.shields.io/badge/version-1.2.0-blue)](https://github.com/yubdey/DaiMeow/releases)
+[![Version](https://img.shields.io/badge/version-1.2.1-blue)](https://github.com/yubdey/DaiMeow/releases)
 
 # 呆喵 DaiMeow
 
@@ -23,7 +23,7 @@
 - **头像视线追踪**：呆喵的头和眼睛会跟随鼠标移动
 - **随机待机动作 + 点击互动**：隔 5~15 秒随机做一个动作，用鼠标点一下呆喵也会立刻随机回一个动作。呆喵另有「站起 / 坐下」两个持续状态：进入后至少保持 60 秒（最长 120 秒），到期按 70% 站起 / 30% 坐下 重新判定；站起时全部 16 个动作都能做（含抱小猪、玩游戏、吃一片薯片和吃两片薯片），坐下时做适合坐姿的 12 个动作（点头 / 摇头 / 看左 / 看右 / 抬头 / 低头 / 耳朵抖动 ×2 / 抱小猪 / 玩游戏 / 吃一片薯片 / 吃两片薯片）
 - **手柄右摇杆控制视角**：通过 Windows XInput 读取手柄，右摇杆控制呆喵视线方向（后台窗口也能用）
-- **多服务商支持**：Moonshot (Kimi)、火山方舟、阿里云百炼、智谱 AI、硅基流动、DeepSeek、小米 MiMo、Ollama 本地模型
+- **多服务商支持**：DeepSeek、Moonshot (Kimi)、小米 MiMo、阿里云百炼、智谱 AI、火山方舟、硅基流动、Ollama 本地模型
 - **人格系统**：6 种可切换人格（元气随从猫 / 温柔陪伴猫 / 傲娇吐槽猫 / 专业猎人猫 / 慵懒摸鱼猫 / 守护骑士猫），每人格有独立完整的 system prompt
 - **生活词条**：长期使用习惯自动解锁的词条（夜猫子 / 早鸟 / 家里蹲 / 工作狂 / "玩"家 / 摸鱼大师）。场景类词条在生成台词的**同一次多模态请求**中顺带识别屏幕场景（工作 / 娱乐 / 其他），不额外消耗图片 Token；使用满 14 天后按场景占比评定等级
 - **桌宠调整**：位置、大小缩放、透明度、鼠标穿透开关、固定位置锁定、窗口拖动
@@ -45,6 +45,8 @@
 - **`DaiMeow-vX.X.X-Windows-x64-unpacked.zip`** —— **解压即用版（推荐）**：解压出 `DaiMeow\` 文件夹，双击里面的 `DaiMeow.exe` 就能用，不装东西、启动也最快
 - **`DaiMeow-X.X.X-Windows-x64-portable.exe`** —— 单文件便携版：只有一个 exe，双击即用（每次启动会先解压到临时目录，启动略慢）
 - **`DaiMeow-Setup-X.X.X-Windows-x64.exe`** —— 安装版，带开始菜单/桌面快捷方式
+
+> 当前 Windows 安装包未配置商业代码签名，Windows SmartScreen 可能提示「未知发布者」。请只从本项目的 GitHub Releases 页面下载。
 
 ### 系统要求
 
@@ -119,6 +121,7 @@ DaiMeow/
 ├── LICENSE                       # 项目源代码的 MIT 协议
 ├── THIRD_PARTY_NOTICES.md        # 第三方素材与许可证说明
 ├── .github/workflows/            # CI：构建检查 + 打 tag 自动发 Release
+├── release-notes/                # 各版本 GitHub Release 说明
 ├── scripts/
 │   └── patch-bundle.js           # esbuild 产物后处理（Cubism2 兼容）
 ├── tools/                        # 开发工具
