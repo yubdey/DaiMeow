@@ -16,33 +16,6 @@
 
 ---
 
-## 📸 实机演示
-
-<table>
-  <tr>
-    <td width="50%">
-      <img src="docs/images/demo-video.webp" alt="呆喵陪你看视频" width="100%">
-      <br><sub>看视频时陪你一起吐槽</sub>
-    </td>
-    <td width="50%">
-      <img src="docs/images/demo-coding.webp" alt="呆喵陪你写代码" width="100%">
-      <br><sub>写代码时帮你看着报错</sub>
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <img src="docs/images/demo-games.webp" alt="呆喵陪你逛游戏库" width="100%">
-      <br><sub>逛游戏库时给出陪玩建议</sub>
-    </td>
-    <td width="50%">
-      <img src="docs/images/demo-settings.webp" alt="呆喵 AI 服务设置" width="100%">
-      <br><sub>配置服务商和视觉模型</sub>
-    </td>
-  </tr>
-</table>
-
----
-
 ## ✨ 功能特点
 
 - **Live2D 桌宠渲染**：透明无边框置顶窗口，Cubism 3 模型实时渲染，常驻屏幕不挡操作
@@ -61,6 +34,29 @@
 - **聊天历史**：带截图的对话记录面板
 - **空闲检测**：180 秒（3 分钟）无操作自动暂停截图，节省资源
 - **按需加载与延迟启动**：宠物窗口在点击启动后创建，道具素材在首次使用时加载，减少未启动时的资源占用和启动开销
+
+---
+
+## 📸 实机演示
+
+<table>
+  <tr>
+    <td width="50%">
+      <img src="docs/images/demo-video.webp" alt="呆喵陪你看视频" width="100%">
+    </td>
+    <td width="50%">
+      <img src="docs/images/demo-coding.webp" alt="呆喵陪你写代码" width="100%">
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <img src="docs/images/demo-games.webp" alt="呆喵陪你逛游戏库" width="100%">
+    </td>
+    <td width="50%">
+      <img src="docs/images/demo-settings.webp" alt="呆喵 AI 服务设置" width="100%">
+    </td>
+  </tr>
+</table>
 
 ---
 
