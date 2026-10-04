@@ -7,7 +7,7 @@ const { writeJsonAtomic } = require('./atomic-file');
 const DATA_PATH = path.join(app.getPath('userData'), 'life-tags.json');
 
 // 时段定义（左闭右开 [start, end)）
-// 夜间 [22:00, 03:00)，早间 [03:00, 09:00)，白天 [09:00, 18:00)，晚间 [18:00, 22:00)
+// 夜间 [19:00, 03:00)，早间 [03:00, 09:00)，白天 [09:00, 19:00)
 const MIN_DAY_SECONDS = 300; // 当天有效使用 ≥5 分钟才算一个使用日
 
 class LifeTagsManager {
@@ -16,7 +16,7 @@ class LifeTagsManager {
       firstUseDate: null,
       useDays: [],
       totalSeconds: 0,
-      slotSeconds: { night: 0, morning: 0, day: 0, evening: 0 },
+      slotSeconds: { night: 0, morning: 0, day: 0 },
       sceneCounts: { work: 0, fun: 0, other: 0 },
       dailySeconds: {},
       unlockedAt: {}, // { tagId: "YYYY-MM-DD HH:mm" } 首次解锁时刻
@@ -37,12 +37,19 @@ class LifeTagsManager {
         firstUseDate: typeof saved.firstUseDate === 'string' ? saved.firstUseDate : null,
         useDays: Array.isArray(saved.useDays) ? saved.useDays : [],
         totalSeconds: sanitizeNumber(saved.totalSeconds),
-        slotSeconds: { night: 0, morning: 0, day: 0, evening: 0 },
+        slotSeconds: { night: 0, morning: 0, day: 0 },
         sceneCounts: { work: 0, fun: 0, other: 0 },
         dailySeconds: {},
         unlockedAt: {},
       };
-      for (const key of ['night', 'morning', 'day', 'evening']) {
+      const savedNight = saved.slotSeconds && saved.slotSeconds.night;
+      if (Number.isFinite(savedNight)) next.slotSeconds.night = savedNight;
+
+      // 旧版晚间 [18:00, 22:00) 已并入夜间，迁移时累加历史时长。
+      const savedEvening = saved.slotSeconds && saved.slotSeconds.evening;
+      if (Number.isFinite(savedEvening)) next.slotSeconds.night += savedEvening;
+
+      for (const key of ['morning', 'day']) {
         const v = saved.slotSeconds && saved.slotSeconds[key];
         if (Number.isFinite(v)) next.slotSeconds[key] = v;
       }
@@ -122,10 +129,9 @@ class LifeTagsManager {
   }
 
   _slotOf(hour) {
-    if (hour >= 22 || hour < 3) return 'night';
+    if (hour >= 19 || hour < 3) return 'night';
     if (hour >= 3 && hour < 9) return 'morning';
-    if (hour >= 9 && hour < 18) return 'day';
-    return 'evening';
+    return 'day';
   }
 
   /**

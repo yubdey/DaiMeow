@@ -4,7 +4,7 @@
 
 [![Build](https://github.com/yubdey/DaiMeow/actions/workflows/build.yml/badge.svg)](https://github.com/yubdey/DaiMeow/actions/workflows/build.yml)
 [![Release](https://github.com/yubdey/DaiMeow/actions/workflows/build-release.yml/badge.svg)](https://github.com/yubdey/DaiMeow/actions/workflows/build-release.yml)
-[![Version](https://img.shields.io/badge/version-1.3.0-blue)](https://github.com/yubdey/DaiMeow/releases)
+[![Version](https://img.shields.io/badge/version-1.4.0-blue)](https://github.com/yubdey/DaiMeow/releases)
 
 # 呆喵 DaiMeow
 
@@ -19,13 +19,13 @@
 ## ✨ 功能特点
 
 - **Live2D 桌宠渲染**：透明无边框置顶窗口，Cubism 3 模型实时渲染，常驻屏幕不挡操作
-- **AI 屏幕观察**：定时截图（默认每 10 秒）→ 多模态大模型 → 呆喵用 1~2 句简短台词评论屏幕内容
+- **AI 屏幕观察**：定时截图（默认每 15 秒）→ 多模态大模型 → 呆喵用 1~2 句简短台词评论屏幕内容
 - **头像视线追踪**：呆喵的头和眼睛会跟随鼠标移动
 - **随机待机动作 + 点击互动**：隔 5~15 秒随机做一个动作，用鼠标点一下呆喵也会立刻随机回一个动作。呆喵另有「站起 / 坐下」两个持续状态：进入后至少保持 60 秒（最长 120 秒），到期按 70% 站起 / 30% 坐下 重新判定；站起时全部 21 个动作都能做（含抱小猪、玩游戏、Hello、流口水、问号、灵光一闪、思考中、吃一片薯片和吃两片薯片），坐下时做适合坐姿的 17 个动作（点头 / 摇头 / 看左 / 看右 / 抬头 / 低头 / 耳朵抖动 ×2 / 抱小猪 / 玩游戏 / Hello / 流口水 / 问号 / 灵光一闪 / 思考中 / 吃一片薯片 / 吃两片薯片）
 - **手柄右摇杆控制视角**：通过 Windows XInput 读取手柄，右摇杆控制呆喵视线方向（后台窗口也能用）
 - **多服务商支持**：DeepSeek、Moonshot (Kimi)、小米 MiMo、阿里云百炼、智谱 AI、火山方舟、硅基流动
-- **人格系统**：6 种可切换人格（元气随从猫 / 温柔陪伴猫 / 傲娇吐槽猫 / 专业猎人猫 / 慵懒摸鱼猫 / 守护骑士猫），每人格有独立完整的 system prompt
-- **生活词条**：长期使用习惯自动解锁的词条（夜猫子 / 早鸟 / 家里蹲 / 工作狂 / "玩"家 / 摸鱼大师）。场景类词条在生成台词的**同一次多模态请求**中顺带识别屏幕场景（工作 / 娱乐 / 其他），不额外消耗图片 Token；使用满 14 天后按场景占比评定等级
+- **人格系统**：6 种可切换人格（元气随从喵 / 温柔陪伴喵 / 傲娇吐槽喵 / 专业猎人喵 / 慵懒摸鱼喵 / 守护骑士喵），每人格有独立完整的 system prompt
+- **生活词条**：长期使用习惯自动解锁的词条（夜喵子 / 早鸟 / 家里蹲 / 工作狂 / "玩"家 / 摸鱼大师）。时段类词条按夜间（19:00～03:00）和早间（03:00～09:00）的使用占比判定；场景类词条在生成台词的**同一次多模态请求**中顺带识别屏幕场景（工作 / 娱乐 / 其他），不额外消耗图片 Token；使用满 14 天后按场景占比评定等级
 - **桌宠调整**：位置、大小缩放、透明度、鼠标穿透开关、固定位置锁定、窗口拖动
 - **右键调整菜单**：直接在呆喵身上点右键，就能切换大小（0.75x / 1.0x / 1.25x）、固定位置、鼠标穿透、置于顶层，一键恢复默认，或退出程序
 - **系统托盘**：关闭窗口最小化到托盘，托盘菜单快捷控制
@@ -139,7 +139,8 @@ DaiMeow/
 ├── release-notes/                # 各版本 GitHub Release 说明
 ├── docs/images/                  # README 实机演示截图
 ├── scripts/
-│   └── patch-bundle.js           # esbuild 产物后处理（Cubism2 兼容）
+│   ├── patch-bundle.js           # esbuild 产物后处理（Cubism2 兼容）
+│   └── prune-release.js          # 清理 release/ 中的旧版本产物
 ├── tools/                        # 开发工具
 │   ├── motion-preview.html       # 动作预览页（左模型 + 右动作列表 + 曲线自检）
 │   ├── preview-app.js            # 预览页逻辑（esbuild 打包成 preview-bundle.js）
@@ -249,8 +250,8 @@ Windows: %APPDATA%/daimeow/config.json
 | `apiKeys` | **按服务商分别保存的 API Key 映射** | `{}` |
 | `apiEndpoint` | OpenAI 兼容接口地址 | Moonshot 默认 |
 | `model` | 当前视觉模型 ID | — |
-| `screenshotInterval` | 截图间隔（秒），1~600 | `10` |
-| `maxTokens` | 单次回复最大 Token | `60` |
+| `screenshotInterval` | 截图间隔（秒），可调范围 5~30 | `15` |
+| `maxTokens` | 单次回复最大 Token（可调范围 50~4096） | `300` |
 | `temperature` | 采样温度 | `0.6` |
 | `petScale` | 实际缩放系数（0.3~1.0） | `0.5` |
 | `petPositionX / petPositionY` | 桌宠位置（0~1 比例） | `0 / 0.5` |
@@ -287,8 +288,8 @@ A：在「设置」面板选择服务商并填入 API Key，点击「保存配�
 **Q：提示「服务商额度不足（403 / 400）：请到控制台充值，或关闭「仅使用免费额度」模式」？**
 A：这是服务商账户余额 / 免费额度用完了（常见于阿里云百炼的 `AllocationQuota.FreeTierOnly`、Moonshot 的欠费提示），DaiMeow 只是把服务商的回执转述出来，与程序无关。请前往对应服务商控制台充值，或关掉「仅使用免费额度」这类开关（关掉后按量计费），也可以换一个还有额度的视觉模型。
 
-**Q：为什么回复内容是空的？**
-A：所有模型的思考模式已在代码中强制关闭（`thinking: disabled`）。如果仍为空，可能是 `maxTokens` 过小或服务商接口异常，可在设置中调大 Max Tokens。
+**Q：为什么回复内容是空的 / 提示「回复被 Max Tokens 截断」？**
+A：呆喵会在请求里**尽量关闭模型的思考模式**（火山方舟、智谱、Moonshot、DeepSeek 用 `thinking.type=disabled`，硅基流动用 `enable_thinking=false`；智谱 GLM-5.3 系列官方不允许关闭、阿里云百炼的视觉模型默认即关闭，所以这几处不下发该参数）。如果仍提示被截断，说明该模型把 token 预算用在思考上了——程序会自动用**两倍预算重试**（最多到 4096），仍不够时在「设置」里把 Max Tokens 调大，或换一个不强制思考的视觉模型。
 
 **Q：手柄怎么控制呆喵？**
 A：先在配置文件 `%APPDATA%/daimeow/config.json` 里把 `"gamepadEnabled"` 改成 `true`（**默认是 false**），然后插入支持 XInput 的手柄、点「呆喵？启动！」即可用右摇杆控制呆喵视线方向，无需切换窗口焦点。
@@ -319,7 +320,7 @@ A：动作是标准的 Cubism `motion3.json`，放进 `model/daimeow/motions/` �
 >
 > `question`（问号）做 1.80s 动作，问号在末尾多保持约 150ms 后再消失：先复用现有“耳朵抖动1”（`blink.motion3.json`）的完整曲线让左右耳同步抖动，随后眼睛切换为半睁状态；`assets/question.png` 复用为 4 个透明贴图，在抖动结束后从头部上方和右侧按顺序弹出、上浮并轻微旋转，保留上方偏左、上方偏右、顶部中央和右侧内圈四个问号。
 >
-> `idea`（灵光一闪）以参考 GIF 为基础重做：`assets/idea_hand.png` 替代呆喵画面左侧的原爪，在下巴位置完成一次左→右→左移动，眼珠在同一 `0.6s` 内顺时针转一整圈再回到正中；移动结束后灯泡 `assets/lightbulb.png` 才从画面左上角弹出。主体动作 1.5s，最后用 0.25s 让外置手和模型原手交叉淡化回位，总时长 1.75s。
+> `idea`（灵光一闪）以参考 GIF 为基础重做：`assets/idea_hand.png` 替代呆喵画面左侧的原爪，在下巴位置用 `0.8s` 完成一次左→右→左移动，眼珠在同一 `0.8s` 内顺时针转一整圈再回到正中；移动结束后灯泡 `assets/lightbulb.png` 才从画面左上角弹出。主体动作 1.5s，最后用 0.25s 让外置手和模型原手交叉淡化回位，总时长 1.75s。
 >
 > `thinking`（思考中）总时长 1.80s：`assets/idea_hand.png` 与“灵光一闪”使用完全相同的横向范围、纵向位置和旋转角度，在下巴位置连续完成 2 次“左→右→左”往返，每轮 700ms；模型原手由同尺寸贴图接管。`assets/thinking_loading.gif` 在额头持续旋转，眼珠左右寻找答案，嘴部保留一点口水。整个动作期间不会显示灯泡。
 >

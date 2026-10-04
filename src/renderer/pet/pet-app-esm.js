@@ -133,13 +133,13 @@ const IDEA_HAND_W = 350;
 const IDEA_HAND_Y = 300;
 const IDEA_HAND_LEFT_X = -380;
 const IDEA_HAND_RIGHT_X = -140;
-const IDEA_HAND_MOVE_MS = 600;
+const IDEA_HAND_MOVE_MS = 800;
 const IDEA_BULB_W = 320;
 const IDEA_BULB_ANCHOR = [-560, -500];
-const IDEA_BULB_IN_START_MS = 620;
-const IDEA_BULB_FULL_MS = 820;
-const IDEA_BULB_OUT_START_MS = 1200;
-const IDEA_BULB_END_MS = 1350;
+const IDEA_BULB_IN_START_MS = 800;
+const IDEA_BULB_FULL_MS = 1120;
+const IDEA_BULB_OUT_START_MS = 1350;
+const IDEA_BULB_END_MS = 1500;
 
 // 「思考中」：思考手势保持在嘴下，额头加载图标持续旋转，眼睛左右寻找。
 const THINKING_ACTION = 'thinking';

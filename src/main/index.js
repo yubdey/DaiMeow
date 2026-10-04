@@ -110,6 +110,7 @@ app.whenReady().then(async () => {
     isLoopRunning: () => screenshotTimer !== null,
     startLoop,
     stopLoop,
+    applyScreenshotInterval,
     // 桌宠右键菜单里的「退出呆喵」：跟托盘退出走同一条路径，
     // 必须先置 isQuitting，否则控制窗口的 close 拦截会把退出吃掉。
     quitApp: () => {
@@ -234,9 +235,39 @@ app.on('activate', () => {
   }
 });
 
-function startLoop() {
-  const config = getConfig();
+/**
+ * 截图间隔（毫秒）。配置损坏或被人为改成 0 时不要退化成"疯狂截图"
+ * （会不停烧 API 额度），所以夹在 5~30 秒 —— 与设置面板滑块的取值范围一致。
+ * 注意：范围以外的历史配置（比如早先设过 60 秒）会被夹进这个区间。
+ */
+function readScreenshotIntervalMs() {
+  const sec = Math.min(30, Math.max(5, parseInt(getConfig().screenshotInterval, 10) || 15));
+  return sec * 1000;
+}
 
+/**
+ * 按最新的「截图间隔」重排截图定时器。
+ *
+ * 间隔是在 startLoop 里一次性读进 setInterval 的，所以运行中改配置只写盘没用 ——
+ * 旧定时器还会按老间隔一直跑下去，必须停一下再启动才会用新值。
+ * 这里在保存配置后立刻重排：清掉旧定时器、用新间隔重新计时。
+ * 循环没在跑时什么都不做（下次 startLoop 本来就会读到新值）。
+ *
+ * @returns {boolean} 是否真的重排了
+ */
+function applyScreenshotInterval() {
+  if (screenshotTimer === null) return false;
+  // 统计/落盘那两个定时器挂在截图定时器上（见 startLoop 末尾），重排时要一起搬过去
+  const statsTimer = screenshotTimer._statsTimer;
+  const flushTimer = screenshotTimer._flushTimer;
+  clearInterval(screenshotTimer);
+  screenshotTimer = setInterval(runCycle, readScreenshotIntervalMs());
+  screenshotTimer._statsTimer = statsTimer;
+  screenshotTimer._flushTimer = flushTimer;
+  return true;
+}
+
+function startLoop() {
   // Defensive: clear any existing loop to avoid duplicate timers
   stopLoop();
 
@@ -254,11 +285,8 @@ function startLoop() {
 
   statsTracker.start();
 
-  // 配置损坏或被人为改成 0 时不要退化成"疯狂截图"（会不停烧 API 额度）：夹在 1~600 秒
-  const intervalSec = Math.min(600, Math.max(1, parseInt(config.screenshotInterval, 10) || 10));
-  const intervalMs = intervalSec * 1000;
   runCycle();
-  screenshotTimer = setInterval(runCycle, intervalMs);
+  screenshotTimer = setInterval(runCycle, readScreenshotIntervalMs());
 
   // 手柄支持（默认关闭）：开关打开时，让渲染层用 Chromium 自带的 Gamepad API 探测有没有真手柄；
   // 只有探到手柄（pet:gamepad-presence）才会去起 XInput 轮询那个常驻 PowerShell 进程。

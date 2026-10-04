@@ -64,6 +64,37 @@ class ApiClient {
     return { scene: SCENE_LABELS[match[1]] || null, reply };
   }
 
+  /**
+   * 「关闭思考模式」的请求参数。呆喵只说一句话，思考既拖慢响应、又可能把
+   * max_tokens 预算吃光（正文一个字都没剩）。
+   *
+   * 但各家参数名不统一，传错字段会被严格校验的服务商以 400 拒绝，所以只对
+   * 能确认字段的服务商下发；未知服务商返回 null（宁可多思考，也不要请求失败）。
+   * 依据（官方文档）：
+   *  - 火山方舟：thinking.type=disabled。doubao-seed 系列**默认就是 enabled**，必须显式关
+   *  - 智谱：thinking.type=disabled；但 GLM-5.3 / 5.3-Flash 官方明确「不再支持关闭思考，
+   *    传 disabled 会报错」，这两个模型跳过（请求侧另有 400 兜底）
+   *  - Moonshot / DeepSeek：thinking.type=disabled
+   *  - 硅基流动：enable_thinking=false
+   *  - 阿里云百炼：qwen3-vl-plus/flash 官方说明默认即关闭思考，带 thinking 后缀的关不掉，
+   *    给普通 instruct 模型传 enable_thinking 又有被拒风险 → 不下发
+   *  - 自定义 / 其他 / 小米 MiMo：参数未知 → 不下发
+   */
+  static buildThinkingParams(endpoint, model) {
+    const url = String(endpoint || '');
+    const id = String(model || '');
+    if (url.includes('ark.cn-beijing.volces.com')) return { thinking: { type: 'disabled' } };
+    if (url.includes('open.bigmodel.cn')) {
+      if (/glm-5\.3/i.test(id)) return null;   // 官方：该系列传 disabled 会报错
+      return { thinking: { type: 'disabled' } };
+    }
+    if (url.includes('api.moonshot.cn') || url.includes('api.deepseek.com')) {
+      return { thinking: { type: 'disabled' } };
+    }
+    if (url.includes('api.siliconflow.cn')) return { enable_thinking: false };
+    return null;
+  }
+
   // 提取非空的历史消息（供两个请求路径共用）
   _filterHistory() {
     return this.chatManager.getMessages().filter(m => {
@@ -122,27 +153,30 @@ class ApiClient {
       ...recentHistory,
     ], classifyScene);
 
-    // Send API request with retry on overload
-    // 仅对已知支持思考开关的 provider 附带 thinking:disabled，避免其他服务商
-    // 严格校验未知字段而返回 400。
-    const thinkingProviders = ['moonshot', 'deepseek'];
-    const disableThinking = thinkingProviders.some(h => config.apiEndpoint.includes(h));
-    const requestBody = {
-      model: config.model,
-      messages,
-      max_tokens: config.maxTokens,
-      temperature: config.temperature,
-      ...(disableThinking ? { thinking: { type: 'disabled' } } : {}),
-    };
+    // 关闭思考模式（呆喵只说一句话，思考既拖慢响应又可能把 token 预算吃光）。
+    // 各家的参数名并不一致，传错字段会被严格校验的服务商以 400 拒绝 ——
+    // 所以只对能确认字段的服务商下发，其余宁可不发（多思考 << 整条请求失败）。
+    let thinkingParams = ApiClient.buildThinkingParams(config.apiEndpoint, config.model);
+    // 预算上限与服务商常见上限、面板输入框上限一致
+    const MAX_TOKENS_LIMIT = 4096;
+    let maxTokens = Math.min(Number(config.maxTokens) || 300, MAX_TOKENS_LIMIT);
 
     try {
     let lastError;
+    let truncatedFallback = '';   // 被截断但至少有内容的回复，作为最后兜底
     for (let attempt = 0; attempt < 3; attempt++) {
       if (attempt > 0) {
         console.warn(`[API] Retry ${attempt} after ${attempt * 3}s...`);
         await new Promise(r => setTimeout(r, attempt * 3000));
       }
 
+      const requestBody = {
+        model: config.model,
+        messages,
+        max_tokens: maxTokens,
+        temperature: config.temperature,
+        ...(thinkingParams || {}),
+      };
       const response = await fetch(config.apiEndpoint, {
         method: 'POST',
         headers: {
@@ -156,20 +190,46 @@ class ApiClient {
       if (!response.ok) {
         const errorBody = await response.text();
         lastError = new Error(`API 请求失败 (${response.status}): ${errorBody}`);
+        // 有些服务商/models 不接受「关闭思考」这个字段（比如智谱 GLM-5.3 传 disabled 会直接报错）：
+        // 一旦因此 400，就摘掉该字段重试一次，保证任何模型都还能用。
+        if (response.status === 400 && thinkingParams) {
+          console.warn('[API] 400 可能是「关闭思考」参数不被接受，去掉该参数重试');
+          thinkingParams = null;
+          continue;
+        }
         if (response.status === 429 || response.status >= 500) continue; // retry
         throw lastError;
       }
 
       const data = await response.json();
-      const msg = data.choices?.[0]?.message || {};
+      const choice = data.choices?.[0] || {};
+      const msg = choice.message || {};
+      // finish_reason=length 表示被 max_tokens 截断（思考型模型常把预算用在思考上，
+      // 正文还没开始就没了）。这种情况不能当成普通的"空回复"，否则用户完全查不出原因。
+      const truncated = choice.finish_reason === 'length';
       const parsed = ApiClient.extractScene(msg.content);
       let reply = parsed.reply.slice(0, 25);
 
+      if (truncated && reply.length >= truncatedFallback.length) truncatedFallback = reply;
+
+      // 被截断：先加大预算重试（通常能拿到完整台词）
+      if (truncated && attempt < 2) {
+        const before = maxTokens;
+        maxTokens = Math.min(maxTokens * 2, MAX_TOKENS_LIMIT);
+        console.warn(`[API] 回复被 max_tokens=${before} 截断，用 ${maxTokens} 重试`);
+        continue;
+      }
+
       if (!reply || reply.trim() === '') {
-        lastError = new Error('AI 返回了空内容，请重试');
+        lastError = truncated
+          ? new Error(`回复被 Max Tokens 截断：${config.maxTokens} tokens 不够用（思考模式会先占用预算），请在「设置」里把 Max Tokens 调大`)
+          : new Error('AI 返回了空内容，请重试');
         if (attempt < 2) continue; // retry on empty
         throw lastError;
       }
+
+      // 试到最后一次仍被截断：用能拿到的那段内容（总比一句话都没有强）
+      if (truncated) reply = truncatedFallback || reply;
 
       this.chatManager.addMessage({ role: 'assistant', content: reply });
       this.statsTracker.addMessage();

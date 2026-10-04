@@ -347,8 +347,10 @@ async function loadConfigToForm() {
   document.getElementById('cfgMaxTokens').value = config.maxTokens || 300;
   document.getElementById('cfgTemperature').value = config.temperature ?? 0.6;
   cfgEndpoint.value = config.apiEndpoint || '';
-  cfgInterval.value = config.screenshotInterval || 10;
-  cfgIntervalVal.textContent = (config.screenshotInterval || 10) + 's';
+  cfgInterval.value = config.screenshotInterval || 15;
+  // 标签取滑块的实际值（滑块会把越界的历史配置夹到 min/max）：
+  // 若照抄配置原值，会出现"滑块停在 30、标签却写 60s"的不一致。
+  cfgIntervalVal.textContent = cfgInterval.value + 's';
 
   // 优先用保存的 provider，其次从 endpoint 反推
   savedProvider = config.provider || 'custom';
@@ -667,8 +669,13 @@ async function loadLifeTags() {
   const section = document.getElementById('lifetagsSection');
   const grid = document.getElementById('lifetagsGrid');
 
-  // 只显示已解锁的词条；全部未解锁则隐藏整个栏目
-  const unlocked = (tags || []).filter(t => t.unlocked);
+  // 只显示已解锁的词条；全部未解锁则隐藏整个栏目。
+  // 排列规则：按「首次解锁时间」从早到晚（不再用定义顺序）。
+  // 时间格式固定是 "YYYY-MM-DD HH:mm"，直接按字符串比较即可；
+  // 万一缺时间（老数据）按最早处理排在最前，顺序仍然稳定。
+  const unlocked = (tags || [])
+    .filter(t => t.unlocked)
+    .sort((a, b) => String(a.firstUnlockedAt || '').localeCompare(String(b.firstUnlockedAt || '')));
   if (unlocked.length === 0) {
     section.style.display = 'none';
     return;

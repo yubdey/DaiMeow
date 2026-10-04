@@ -106,13 +106,13 @@ const IDEA_HAND_W = 350;
 const IDEA_HAND_Y = 300;
 const IDEA_HAND_LEFT_X = -380;
 const IDEA_HAND_RIGHT_X = -140;
-const IDEA_HAND_MOVE_MS = 600;
+const IDEA_HAND_MOVE_MS = 800;
 const IDEA_BULB_W = 320;
 const IDEA_BULB_ANCHOR = [-560, -500];
-const IDEA_BULB_IN_START_MS = 620;
-const IDEA_BULB_FULL_MS = 820;
-const IDEA_BULB_OUT_START_MS = 1200;
-const IDEA_BULB_END_MS = 1350;
+const IDEA_BULB_IN_START_MS = 800;
+const IDEA_BULB_FULL_MS = 1120;
+const IDEA_BULB_OUT_START_MS = 1350;
+const IDEA_BULB_END_MS = 1500;
 let ideaStartAt = 0;
 
 // 「思考中」（与桌宠 pet-app-esm.js 保持同一套参数）

@@ -17,6 +17,9 @@ function registerIpcHandlers(ctx) {
 
   ipcMain.handle('control:save-config', async (event, partial) => {
     saveConfig(partial);
+    // 运行中改「截图间隔」要立刻生效：间隔是启动时读进定时器的，不重排就得停了再启动。
+    // 其它字段（服务商、Key、模型等）本来每次请求都会重新读配置，不需要额外处理。
+    if (partial && partial.screenshotInterval !== undefined) ctx.applyScreenshotInterval();
     return getConfig();
   });
 

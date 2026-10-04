@@ -13,7 +13,7 @@
 //
 // data 结构：
 //   totalSeconds   总有效秒数
-//   slotSeconds    { night, morning, day, evening }
+//   slotSeconds    { night, morning, day }
 //   sceneCounts    { work, fun, other, total } 场景统计（场景词条用）
 //   useDays        ["YYYY-MM-DD", ...]
 
@@ -27,9 +27,9 @@ const sceneRatio = (data, scene) => {
 module.exports = [
   {
     id: 'night_owl',
-    name: '夜猫子',
+    name: '夜喵子',
     icon: '🦉',
-    description: '深夜仍在使用电脑的习惯',
+    description: '夜间使用电脑',
     slot: 'night',
     maxLevel: 5,
     thresholds: [0.65, 0.75, 0.85, 0.90, 0.95],
@@ -61,7 +61,7 @@ module.exports = [
       if (data.totalSeconds <= 10 * 3600) return false; // 总使用 >10h 才开始算
       if (data.useDays.length === 0) return false;
       const avg = data.totalSeconds / data.useDays.length;
-      return avg > 3 * 3600; // 日均 > 3h
+      return avg > 3600; // 日均 > 1h
     },
   },
   {
@@ -89,7 +89,7 @@ module.exports = [
     id: 'slacker',
     name: '摸鱼大师',
     icon: '🐟',
-    description: '工作与娱乐都不占多数，屏幕时间另有去处',
+    description: '工作与娱乐都算不上多数',
     // 无等级词条：工作、娱乐占比都低于 65% 时解锁
     minDays: 14,
     calc: (data) => {
