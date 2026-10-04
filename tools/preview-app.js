@@ -7,6 +7,7 @@
  */
 import * as PIXI from 'pixi.js';
 import { Live2DModel, MotionPriority } from 'pixi-live2d-display/cubism4';
+import { getMotionActionDefinition } from '../src/renderer/pet/action-definitions.js';
 
 const MODEL_PATH = '/model/daimeow/daimeow.model3.json';
 const ASSETS = {
@@ -53,6 +54,79 @@ function chipsPlaybackMs() {
   return CHIPS_CYCLE_MS;
 }
 
+// 「Hello」（与桌宠 pet-app-esm.js 保持同一套参数）
+const HELLO_ACTION = 'hello';
+const HELLO_MOTION_MS = 1530;
+const HELLO_RESTORE_MS = 300;
+const HELLO_PROP_MS = HELLO_MOTION_MS + HELLO_RESTORE_MS;
+const HELLO_CYCLE_MS = 510;
+const HELLO_TEXT_W = 760;
+const HELLO_TEXT_ANCHOR = [-450, -920];
+const HELLO_TEXT_ROT = -3;
+const HELLO_HAND_ANCHOR = [0, -540];
+const HELLO_WAVE_KEYS = [
+  [0, 0], [67, 67], [79, 141], [5, 171], [-120, 162], [-248, 155], [-274, 157],
+  [-280, 139], [-176, 106], [-43, 97], [56, 125], [71, 150], [13, 134],
+  [-82, 85], [-167, 33], [-200, -3], [-162, -30],
+];
+let helloStartAt = 0;
+
+// 「流口水」（与桌宠 pet-app-esm.js 保持同一套参数）
+const DROOL_ACTION = 'drool';
+const DROOL_STICKER_W = 600;
+const DROOL_STICKER_ANCHOR = [0, -500];
+const DROOL_NOD_PERIOD_MS = 510;
+const DROOL_NOD_Y = 90;
+const DROOL_W = 54;
+const DROOL_ANCHOR = [0, 20];
+const DROOL_START_MS = 1620;
+const DROOL_FULL_MS = 2220;
+const DROOL_HOLD_MS = 300;
+const DROOL_PROP_MS = DROOL_FULL_MS + DROOL_HOLD_MS;
+let droolStartAt = 0;
+
+// 「问号」（与桌宠 pet-app-esm.js 保持同一套参数）
+const QUESTION_ACTION = 'question';
+const QUESTION_PROP_MS = 1800;
+const QUESTION_W = 300;
+const QUESTION_PARTICLES = [
+  { id: 'question0', delay: 600,  from: [-520, -620], to: [-560, -760], rot: -8 },
+  { id: 'question3', delay: 800,  from: [560, -560],  to: [620, -700],  rot: 9 },
+  { id: 'question4', delay: 1000, from: [-40, -790],  to: [-60, -920],  rot: -5 },
+  { id: 'question5', delay: 1200, from: [300, -380],  to: [340, -500],  rot: 6 },
+];
+let questionStartAt = 0;
+
+// 「灵光一闪」（与桌宠 pet-app-esm.js 保持同一套参数）
+const IDEA_ACTION = 'idea';
+const IDEA_MOTION_MS = 1500;
+const IDEA_RESTORE_MS = 250;
+const IDEA_PROP_MS = IDEA_MOTION_MS + IDEA_RESTORE_MS;
+const IDEA_HAND_W = 350;
+const IDEA_HAND_Y = 300;
+const IDEA_HAND_LEFT_X = -380;
+const IDEA_HAND_RIGHT_X = -140;
+const IDEA_HAND_MOVE_MS = 600;
+const IDEA_BULB_W = 320;
+const IDEA_BULB_ANCHOR = [-560, -500];
+const IDEA_BULB_IN_START_MS = 620;
+const IDEA_BULB_FULL_MS = 820;
+const IDEA_BULB_OUT_START_MS = 1200;
+const IDEA_BULB_END_MS = 1350;
+let ideaStartAt = 0;
+
+// 「思考中」（与桌宠 pet-app-esm.js 保持同一套参数）
+const THINKING_ACTION = 'thinking';
+const THINKING_PROP_MS = 1800;
+const THINKING_HAND_W = IDEA_HAND_W;
+const THINKING_HAND_Y = IDEA_HAND_Y;
+const THINKING_HAND_CYCLE_MS = 700;
+const THINKING_HAND_CYCLES = 2;
+const THINKING_HAND_MOVE_MS = THINKING_HAND_CYCLE_MS * THINKING_HAND_CYCLES;
+const THINKING_LOADING_W = 750;
+const THINKING_LOADING_ANCHOR = [0, -450];
+const THINKING_DROOL_W = 40;
+let thinkingStartAt = 0;
 
 // 「抱小猪」（与桌宠 pet-app-esm.js 保持同一套参数，预览即所得）
 const PIG_ACTION = 'hold_pig';
@@ -138,6 +212,93 @@ function eatChipsPose(now) {
   };
 }
 
+function sampleHelloWave(u) {
+  const keys = HELLO_WAVE_KEYS;
+  const n = keys.length;
+  const pos = (((u % 1) + 1) % 1) * n;
+  const i = Math.floor(pos);
+  const f = pos - i;
+  const k0 = keys[(i - 1 + n) % n];
+  const k1 = keys[i % n];
+  const k2 = keys[(i + 1) % n];
+  const k3 = keys[(i + 2) % n];
+  const e = f * f * (3 - 2 * f);
+  const cr = (v0, v1, v2, v3) => 0.5 * ((2 * v1) + (-v0 + v2) * e
+    + (2 * v0 - 5 * v1 + 4 * v2 - v3) * e * e
+    + (-v0 + 3 * v1 - 3 * v2 + v3) * e * e * e);
+  return [0, 1].map((j) => cr(k0[j], k1[j], k2[j], k3[j]));
+}
+
+function helloPose(now) {
+  const neutral = { handX: 0, handY: 0, handRot: 0, textY: 0, textRot: HELLO_TEXT_ROT };
+  if (!helloStartAt) return neutral;
+  const elapsed = now - helloStartAt;
+  if (elapsed < 0 || elapsed >= HELLO_MOTION_MS) return neutral;
+  const u = (elapsed % HELLO_CYCLE_MS) / HELLO_CYCLE_MS;
+  const wave = sampleHelloWave(u);
+  const phase = 2 * Math.PI * u;
+  return {
+    handX: wave[0],
+    handY: wave[1],
+    handRot: -4 * Math.sin(phase),
+    textY: -10 * Math.sin(phase),
+    textRot: HELLO_TEXT_ROT + 2 * Math.sin(phase),
+  };
+}
+
+function helloRestoreProgress(elapsed) {
+  if (elapsed <= HELLO_MOTION_MS) return 0;
+  if (elapsed >= HELLO_PROP_MS) return 1;
+  const t = (elapsed - HELLO_MOTION_MS) / HELLO_RESTORE_MS;
+  return t * t * (3 - 2 * t);
+}
+
+function helloHandsOpacityAt(elapsed) {
+  if (elapsed <= 0 || elapsed >= HELLO_PROP_MS) return 1;
+  return helloRestoreProgress(elapsed);
+}
+
+function questionParticlePose(particle, elapsed) {
+  const age = elapsed - particle.delay;
+  if (age < 0) return null;
+  const enter = Math.min(1, age / 180);
+  const move = Math.min(1, age / 480);
+  const ease = 1 - Math.pow(1 - move, 3);
+  return {
+    x: particle.from[0] + (particle.to[0] - particle.from[0]) * ease,
+    y: particle.from[1] + (particle.to[1] - particle.from[1]) * ease,
+    scale: 0.28 + 0.72 * (enter * enter * (3 - 2 * enter)),
+    opacity: enter,
+    rot: particle.rot * ease,
+  };
+}
+
+function ideaHandX(elapsed) {
+  const t = Math.max(0, Math.min(1, elapsed / IDEA_HAND_MOVE_MS));
+  const half = t < 0.5 ? t * 2 : (1 - t) * 2;
+  const e = half * half * (3 - 2 * half);
+  return IDEA_HAND_LEFT_X + (IDEA_HAND_RIGHT_X - IDEA_HAND_LEFT_X) * e;
+}
+
+function thinkingHandX(elapsed) {
+  if (elapsed >= THINKING_HAND_MOVE_MS) return IDEA_HAND_LEFT_X;
+  const cycleT = (elapsed % THINKING_HAND_CYCLE_MS) / THINKING_HAND_CYCLE_MS;
+  const half = cycleT < 0.5 ? cycleT * 2 : (1 - cycleT) * 2;
+  const e = half * half * (3 - 2 * half);
+  return IDEA_HAND_LEFT_X + (IDEA_HAND_RIGHT_X - IDEA_HAND_LEFT_X) * e;
+}
+
+function ideaRestoreProgress(elapsed) {
+  if (elapsed <= IDEA_MOTION_MS) return 0;
+  if (elapsed >= IDEA_PROP_MS) return 1;
+  const t = (elapsed - IDEA_MOTION_MS) / IDEA_RESTORE_MS;
+  return t * t * (3 - 2 * t);
+}
+
+function ideaHandsOpacityAt(elapsed) {
+  if (elapsed <= 0 || elapsed >= IDEA_PROP_MS) return 1;
+  return ideaRestoreProgress(elapsed);
+}
 
 /** 与桌宠同一套的 17 帧循环插值。 */
 function samplePigLoop(u) {
@@ -213,26 +374,28 @@ function handsOpacityAt(elapsed, totalMs = chipsPlaybackMs()) {
 PIXI.Ticker.shared.add(() => {
   if (!model) return;
   const now = performance.now();
+  const helloElapsed = helloStartAt ? now - helloStartAt : -1;
+  const ideaElapsed = ideaStartAt ? now - ideaStartAt : -1;
+  const thinkingElapsed = thinkingStartAt ? now - thinkingStartAt : -1;
   const chipsElapsed = chipsStartAt ? now - chipsStartAt : -1;
   const pigElapsed = pigStartAt ? now - pigStartAt : -1;
   const gamepadElapsed = gamepadStartAt ? now - gamepadStartAt : -1;
+  if (helloStartAt && helloElapsed >= HELLO_PROP_MS) helloStartAt = 0;
+  if (ideaStartAt && ideaElapsed >= IDEA_PROP_MS) ideaStartAt = 0;
+  if (thinkingStartAt && thinkingElapsed >= THINKING_PROP_MS) thinkingStartAt = 0;
   if (chipsStartAt && chipsElapsed >= chipsPlaybackMs()) { chipsStartAt = 0; chipsCycles = 0; }
   if (pigStartAt && pigElapsed >= PIG_PROP_MS) pigStartAt = 0;
   if (gamepadStartAt && gamepadElapsed >= GAMEPAD_PROP_MS) gamepadStartAt = 0;
   const opacity = chipsStartAt ? handsOpacityAt(chipsElapsed)
-    : (pigStartAt ? pigHandsOpacityAt(pigElapsed) : (gamepadStartAt ? gamepadHandsOpacityAt(gamepadElapsed) : 1));
+    : (pigStartAt ? pigHandsOpacityAt(pigElapsed)
+      : (gamepadStartAt ? gamepadHandsOpacityAt(gamepadElapsed)
+        : (helloStartAt ? helloHandsOpacityAt(helloElapsed)
+          : (ideaStartAt ? ideaHandsOpacityAt(ideaElapsed)
+            : (thinkingStartAt ? 0 : 1)))));
   try {
     model.internalModel.coreModel.setPartOpacityById(PART_HANDS, opacity);
   } catch (err) { /* 忽略 */ }
 }, null, PIXI.UPDATE_PRIORITY.LOW);
-// 动作名 → 中文标签（和桌宠里那套叫法一致）
-const LABELS = {
-  nod: '点头', shake_head: '摇头', look_left: '看左', look_right: '看右',
-  look_up: '抬头', look_down: '低头', blink: '耳朵抖动1', ear_twitch: '耳朵抖动2',
-  happy: '开心', surprised: '惊讶', sad: '难过', cheer: '啦啦啦', hold_pig: '抱小猪', play_game: '玩游戏',
-  eat_chips: '吃一片薯片', eat_two_chips: '吃两片薯片',
-};
-
 const $ = (id) => document.getElementById(id);
 const canvas = $('stage');
 const wrap = $('stageWrap');
@@ -254,6 +417,14 @@ let paws = null;             // [左手 drawable 序号, 右手序号]
 let propUntil = 0;
 const propLeft = $('propLeft');
 const propRight = $('propRight');
+const propHello = $('propHello');
+const propQuestions = QUESTION_PARTICLES.map((p) => ({ ...p, el: $(p.id) }));
+const propIdeaHand = $('propIdeaHand');
+const propLightbulb = $('propLightbulb');
+const propThinkingHand = $('propThinkingHand');
+const propThinkingLoading = $('propThinkingLoading');
+const propPigSticker = $('propPigSticker');
+const propDrool = $('propDrool');
 const propChips = $('propChips');
 const propPig = $('propPig');
 const propGamepad = $('propGamepad');
@@ -306,6 +477,20 @@ function resolvePaws() {
   return cx[0] <= cx[1] ? idx : [idx[1], idx[0]];
 }
 
+/** 预览页的道具显隐。内联 opacity 必须随隐藏一起清掉，否则动作被切换后会残留。 */
+function setPreviewPropVisible(el, visible) {
+  if (!el) return;
+  const cls = visible ? 'show' : '';
+  if (el.className !== cls) el.className = cls;
+  if (!visible && el.style.opacity !== '') el.style.opacity = '';
+}
+
+function hideAllPreviewProps() {
+  for (const el of [propLeft, propRight, propHello, ...propQuestions.map((p) => p.el), propIdeaHand, propLightbulb, propThinkingHand, propThinkingLoading, propPigSticker, propDrool, propChips, propChip, propPig, propGamepad, propHandLeft, propHandRight]) {
+    setPreviewPropVisible(el, false);
+  }
+}
+
 /** 每帧：视线跟随 + 让模型铺满 + 需要时把啦啦球贴到手上 */
 app.ticker.add(() => {
   if (!model) return;
@@ -317,23 +502,40 @@ app.ticker.add(() => {
 
   const propsOn = $('showProps').checked;
   const ballsVisible = propsOn && performance.now() < propUntil;
+  const helloVisible = propsOn && helloStartAt > 0 && (performance.now() - helloStartAt) < HELLO_PROP_MS;
+  if (droolStartAt && performance.now() - droolStartAt >= DROOL_PROP_MS) droolStartAt = 0;
+  if (questionStartAt && performance.now() - questionStartAt >= QUESTION_PROP_MS) questionStartAt = 0;
+  if (ideaStartAt && performance.now() - ideaStartAt >= IDEA_PROP_MS) ideaStartAt = 0;
+  if (thinkingStartAt && performance.now() - thinkingStartAt >= THINKING_PROP_MS) thinkingStartAt = 0;
+  const droolVisible = propsOn && droolStartAt > 0 && (performance.now() - droolStartAt) < DROOL_PROP_MS;
+  const questionVisible = propsOn && questionStartAt > 0 && (performance.now() - questionStartAt) < QUESTION_PROP_MS;
+  const ideaVisible = propsOn && ideaStartAt > 0 && (performance.now() - ideaStartAt) < IDEA_PROP_MS;
+  const thinkingVisible = propsOn && thinkingStartAt > 0 && (performance.now() - thinkingStartAt) < THINKING_PROP_MS;
   const chipsVisible = propsOn && chipsStartAt > 0 && (performance.now() - chipsStartAt) < chipsPlaybackMs();
   const pigVisible = propsOn && pigStartAt > 0 && (performance.now() - pigStartAt) < PIG_PROP_MS;
   const gamepadVisible = propsOn && gamepadStartAt > 0 && (performance.now() - gamepadStartAt) < GAMEPAD_PROP_MS;
 
-  const ballCls = ballsVisible ? 'show' : '';
-  if (propLeft.className !== ballCls) { propLeft.className = ballCls; propRight.className = ballCls; }
-  const chipsCls = chipsVisible ? 'show' : '';
-  if (propChips.className !== chipsCls) propChips.className = chipsCls;
-  if (propChip.className !== chipsCls) propChip.className = chipsCls;
-  const pigCls = pigVisible ? 'show' : '';
-  if (propPig.className !== pigCls) propPig.className = pigCls;
-  const gamepadCls = gamepadVisible ? 'show' : '';
-  if (propGamepad.className !== gamepadCls) propGamepad.className = gamepadCls;
-  const handCls = (chipsVisible || pigVisible || gamepadVisible) ? 'show' : '';
-  if (propHandLeft.className !== handCls) propHandLeft.className = handCls;
-  if (propHandRight.className !== handCls) propHandRight.className = handCls;
-  if ((!ballsVisible && !chipsVisible && !pigVisible && !gamepadVisible) || !paws) { if (propChip) propChip.style.opacity = ''; if (propPig) propPig.style.opacity = ''; if (propGamepad) propGamepad.style.opacity = ''; if (propHandLeft) propHandLeft.style.opacity = ''; if (propHandRight) propHandRight.style.opacity = ''; return; }
+  setPreviewPropVisible(propLeft, ballsVisible);
+  setPreviewPropVisible(propRight, ballsVisible);
+  setPreviewPropVisible(propHello, helloVisible);
+  setPreviewPropVisible(propPigSticker, droolVisible);
+  setPreviewPropVisible(propDrool, droolVisible || thinkingVisible);
+  setPreviewPropVisible(propIdeaHand, ideaVisible);
+  setPreviewPropVisible(propLightbulb, ideaVisible);
+  setPreviewPropVisible(propThinkingHand, thinkingVisible);
+  setPreviewPropVisible(propThinkingLoading, thinkingVisible);
+  for (const particle of propQuestions) {
+    const pose = questionVisible ? questionParticlePose(particle, performance.now() - questionStartAt) : null;
+    setPreviewPropVisible(particle.el, !!pose);
+  }
+  setPreviewPropVisible(propChips, chipsVisible);
+  setPreviewPropVisible(propChip, chipsVisible);
+  setPreviewPropVisible(propPig, pigVisible);
+  setPreviewPropVisible(propGamepad, gamepadVisible);
+  const handCls = (ideaVisible || thinkingVisible || helloVisible || chipsVisible || pigVisible || gamepadVisible) ? 'show' : '';
+  setPreviewPropVisible(propHandLeft, handCls === 'show');
+  setPreviewPropVisible(propHandRight, handCls === 'show');
+  if ((!ballsVisible && !helloVisible && !droolVisible && !questionVisible && !ideaVisible && !thinkingVisible && !chipsVisible && !pigVisible && !gamepadVisible) || !paws) return;
 
   const internal = model.internalModel;
   const centers = [];
@@ -468,6 +670,129 @@ app.ticker.add(() => {
     propHandRight.style.width = handW + 'px';
     propHandRight.style.transform = 'translate(-50%, -50%) rotate(' + (pose.rot * move) + 'deg)';
     propChip.style.opacity = '';
+  } else if (helloVisible) {
+    const nowValue = performance.now();
+    const pose = helloPose(nowValue);
+    const restore = helloRestoreProgress(nowValue - helloStartAt);
+    const handW = CHIPS_HAND_W * scale;
+    const mid = [
+      (centers[0][0] + centers[1][0]) / 2,
+      (centers[0][1] + centers[1][1]) / 2,
+    ];
+    propHandLeft.style.opacity = String(1 - restore);
+    propHandLeft.style.left = (centers[0][0] + pose.handX * scale) + 'px';
+    const handY = HELLO_HAND_ANCHOR[1] * (1 - restore) + pose.handY;
+    propHandLeft.style.top = (centers[0][1] + handY * scale) + 'px';
+    propHandLeft.style.width = handW + 'px';
+    propHandLeft.style.transform = 'translate(-50%, -50%) rotate(' + pose.handRot + 'deg)';
+    propHandRight.style.opacity = String(1 - restore);
+    propHandRight.style.left = centers[1][0] + 'px';
+    propHandRight.style.top = centers[1][1] + 'px';
+    propHandRight.style.width = handW + 'px';
+    propHandRight.style.transform = 'translate(-50%, -50%)';
+    propHello.style.left = (mid[0] + HELLO_TEXT_ANCHOR[0] * scale) + 'px';
+    propHello.style.top = (mid[1] + (HELLO_TEXT_ANCHOR[1] + pose.textY) * scale) + 'px';
+    propHello.style.width = (HELLO_TEXT_W * scale) + 'px';
+    propHello.style.transform = 'translate(-50%, -50%) rotate(' + pose.textRot + 'deg)';
+    propHello.style.opacity = String(1 - restore);
+  } else if (droolVisible) {
+    const nowValue = performance.now();
+    const elapsed = nowValue - droolStartAt;
+    const nodT = elapsed < DROOL_START_MS
+      ? 0.5 - 0.5 * Math.cos(2 * Math.PI * elapsed / DROOL_NOD_PERIOD_MS)
+      : 0;
+    const bobY = DROOL_NOD_Y * nodT;
+    const centerX = app.screen.width / 2;
+    const centerY = app.screen.height / 2;
+
+    propPigSticker.style.left = (centerX + DROOL_STICKER_ANCHOR[0] * scale) + 'px';
+    propPigSticker.style.top = (centerY + (DROOL_STICKER_ANCHOR[1] + bobY) * scale) + 'px';
+    propPigSticker.style.width = (DROOL_STICKER_W * scale) + 'px';
+    propPigSticker.style.transform = 'translate(-50%, -50%)';
+
+    let dropT = Math.max(0, Math.min(1, (elapsed - DROOL_START_MS) / (DROOL_FULL_MS - DROOL_START_MS)));
+    dropT = dropT * dropT * (3 - 2 * dropT);
+    propDrool.style.left = (centerX + DROOL_ANCHOR[0] * scale) + 'px';
+    propDrool.style.top = (centerY + DROOL_ANCHOR[1] * scale) + 'px';
+    propDrool.style.width = (DROOL_W * scale) + 'px';
+    propDrool.style.transformOrigin = 'top center';
+    propDrool.style.transform = 'translate(-50%, 0) scaleY(' + (0.12 + 0.88 * dropT) + ')';
+    propDrool.style.opacity = String(dropT);
+  } else if (questionVisible) {
+    const elapsed = performance.now() - questionStartAt;
+    const centerX = app.screen.width / 2;
+    const centerY = app.screen.height / 2;
+    for (const particle of propQuestions) {
+      const pose = questionParticlePose(particle, elapsed);
+      if (!pose || !particle.el) continue;
+      particle.el.style.left = (centerX + pose.x * scale) + 'px';
+      particle.el.style.top = (centerY + pose.y * scale) + 'px';
+      particle.el.style.width = (QUESTION_W * scale * pose.scale) + 'px';
+      particle.el.style.transform = 'translate(-50%, -50%) rotate(' + pose.rot + 'deg)';
+      particle.el.style.opacity = String(pose.opacity);
+    }
+  } else if (ideaVisible) {
+    const elapsed = performance.now() - ideaStartAt;
+    const centerX = app.screen.width / 2;
+    const centerY = app.screen.height / 2;
+    const restore = ideaRestoreProgress(elapsed);
+    const handXModel = ideaHandX(elapsed);
+    const handX = (centerX + handXModel * scale) * (1 - restore) + centers[0][0] * restore;
+    const handY = (centerY + IDEA_HAND_Y * scale) * (1 - restore) + centers[0][1] * restore;
+    propIdeaHand.style.opacity = String(1 - restore);
+    propIdeaHand.style.left = handX + 'px';
+    propIdeaHand.style.top = handY + 'px';
+    propIdeaHand.style.width = (IDEA_HAND_W * scale) + 'px';
+    propIdeaHand.style.transform = 'translate(-50%, -50%) rotate(10deg)';
+    propHandLeft.style.opacity = '0';
+    propHandRight.style.opacity = String(1 - restore);
+    propHandRight.style.left = centers[1][0] + 'px';
+    propHandRight.style.top = centers[1][1] + 'px';
+    propHandRight.style.width = (CHIPS_HAND_W * scale) + 'px';
+    propHandRight.style.transform = 'translate(-50%, -50%)';
+
+    let bulbT = 0;
+    if (elapsed < IDEA_BULB_FULL_MS) {
+      const t = Math.max(0, Math.min(1, (elapsed - IDEA_BULB_IN_START_MS) / (IDEA_BULB_FULL_MS - IDEA_BULB_IN_START_MS)));
+      bulbT = t * t * (3 - 2 * t);
+    } else if (elapsed < IDEA_BULB_OUT_START_MS) {
+      bulbT = 1;
+    } else {
+      const t = Math.max(0, Math.min(1, (elapsed - IDEA_BULB_OUT_START_MS) / (IDEA_BULB_END_MS - IDEA_BULB_OUT_START_MS)));
+      bulbT = 1 - t * t * (3 - 2 * t);
+    }
+    propLightbulb.style.left = (centerX + IDEA_BULB_ANCHOR[0] * scale) + 'px';
+    propLightbulb.style.top = (centerY + IDEA_BULB_ANCHOR[1] * scale) + 'px';
+    propLightbulb.style.width = (IDEA_BULB_W * scale * (0.28 + 0.72 * bulbT)) + 'px';
+    propLightbulb.style.transform = 'translate(-50%, -50%) rotate(-30deg)';
+    propLightbulb.style.opacity = String(bulbT * (1 - restore));
+  } else if (thinkingVisible) {
+    const centerX = app.screen.width / 2;
+    const centerY = app.screen.height / 2;
+    const handXModel = thinkingHandX(performance.now() - thinkingStartAt);
+    propThinkingHand.style.opacity = '1';
+    propThinkingHand.style.left = (centerX + handXModel * scale) + 'px';
+    propThinkingHand.style.top = (centerY + THINKING_HAND_Y * scale) + 'px';
+    propThinkingHand.style.width = (THINKING_HAND_W * scale) + 'px';
+    propThinkingHand.style.transform = 'translate(-50%, -50%) rotate(10deg)';
+    propHandLeft.style.opacity = '0';
+    propHandRight.style.opacity = '1';
+    propHandRight.style.left = centers[1][0] + 'px';
+    propHandRight.style.top = centers[1][1] + 'px';
+    propHandRight.style.width = (CHIPS_HAND_W * scale) + 'px';
+    propHandRight.style.transform = 'translate(-50%, -50%)';
+
+    propThinkingLoading.style.left = (centerX + THINKING_LOADING_ANCHOR[0] * scale) + 'px';
+    propThinkingLoading.style.top = (centerY + THINKING_LOADING_ANCHOR[1] * scale) + 'px';
+    propThinkingLoading.style.width = (THINKING_LOADING_W * scale) + 'px';
+    propThinkingLoading.style.transform = 'translate(-50%, -50%)';
+
+    propDrool.style.left = (centerX + DROOL_ANCHOR[0] * scale) + 'px';
+    propDrool.style.top = (centerY + DROOL_ANCHOR[1] * scale) + 'px';
+    propDrool.style.width = (THINKING_DROOL_W * scale) + 'px';
+    propDrool.style.transformOrigin = 'top center';
+    propDrool.style.transform = 'translate(-50%, 0) scaleY(1)';
+    propDrool.style.opacity = '1';
   }
 });
 
@@ -493,7 +818,7 @@ async function boot() {
     defs[group].forEach((def, index) => {
       const file = String(def.File).split('/').pop();
       const name = file.replace('.motion3.json', '');
-      actions.push({ name, label: LABELS[name] || name, group, index, url: '/model/daimeow/motions/' + name + '.motion3.json', duration: 0 });
+      actions.push({ name, label: getMotionActionDefinition(name)?.label || name, group, index, url: '/model/daimeow/motions/' + name + '.motion3.json', duration: 0 });
     });
   }
   // 预读时长，供「全部依次播放」用，也顺便提前发现坏文件
@@ -526,12 +851,18 @@ function play(i) {
   if (i < 0 || i >= actions.length || !model) return;
   current = i;
   const a = actions[i];
-  propUntil = 0; chipsStartAt = 0; chipsCycles = 0; pigStartAt = 0; gamepadStartAt = 0;
+  propUntil = 0; helloStartAt = 0; droolStartAt = 0; questionStartAt = 0; ideaStartAt = 0; thinkingStartAt = 0; chipsStartAt = 0; chipsCycles = 0; pigStartAt = 0; gamepadStartAt = 0;
+  hideAllPreviewProps();
   if (a.name === CHEER) propUntil = performance.now() + CHEER_PROP_MS;
   if (a.name === CHIPS_ACTION || a.name === CHIPS_TWO_ACTION) {
     chipsCycles = a.name === CHIPS_TWO_ACTION ? 2 : 1;
     chipsStartAt = performance.now();
   }
+  if (a.name === HELLO_ACTION) helloStartAt = performance.now();
+  if (a.name === DROOL_ACTION) droolStartAt = performance.now();
+  if (a.name === QUESTION_ACTION) questionStartAt = performance.now();
+  if (a.name === IDEA_ACTION) ideaStartAt = performance.now();
+  if (a.name === THINKING_ACTION) thinkingStartAt = performance.now();
   if (a.name === PIG_ACTION) pigStartAt = performance.now();
   if (a.name === GAMEPAD_ACTION) gamepadStartAt = performance.now();
   model.motion(a.group, a.index, MotionPriority.FORCE);
@@ -659,6 +990,14 @@ document.addEventListener('keydown', (e) => {
 
 propLeft.src = ASSETS.left;
 propRight.src = ASSETS.right;
+propHello.src = '/src/renderer/pet/assets/hello.png';
+for (const particle of propQuestions) particle.el.src = '/src/renderer/pet/assets/question.png';
+propIdeaHand.src = '/src/renderer/pet/assets/idea_hand.png';
+propLightbulb.src = '/src/renderer/pet/assets/lightbulb.png';
+propThinkingHand.src = '/src/renderer/pet/assets/idea_hand.png';
+propThinkingLoading.src = '/src/renderer/pet/assets/thinking_loading.gif';
+propPigSticker.src = '/src/renderer/pet/assets/pig_sticker.png';
+propDrool.src = '/src/renderer/pet/assets/drool.png';
 propChips.src = '/src/renderer/pet/assets/chips.png';
 propPig.src = '/src/renderer/pet/assets/pig.png';
 propGamepad.src = '/src/renderer/pet/assets/gamepad.png';

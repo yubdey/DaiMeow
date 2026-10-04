@@ -11,10 +11,7 @@ const DEFAULTS = {
   provider: 'custom',
   apiEndpoint: 'https://api.moonshot.cn/v1/chat/completions',
   model: '',
-  providerType: 'api',
-  ollamaEndpoint: 'http://127.0.0.1:11434',
   screenshotInterval: 10,
-  sceneSampleEvery: 1,
   maxTokens: 60,
   temperature: 0.6,
   petScale: 0.5,
@@ -95,10 +92,20 @@ function load() {
     config.apiKeys = plainKeys;
     config.apiKey = decryptSecret(saved.apiKey, (raw) => { undecryptable.apiKey = raw; });
 
+    // Ollama 支持已移除：老配置自动回到云端 API 模式，并清掉不属于 API 的模型与端点，
+    // 避免升级后把本地模型名误发给云端服务商。
+    const needsOllamaMigration = config.providerType === 'ollama';
+    if (needsOllamaMigration) {
+      config.providerType = 'api';
+      if (config.provider === 'ollama') config.provider = 'custom';
+      config.model = '';
+      delete config.ollamaEndpoint;
+    }
+
     // 旧版的明文配置：能加密就立刻落盘迁移，避免明文长期留在磁盘上
-    const needsMigration = encryptionAvailable()
+    const needsSecretMigration = encryptionAvailable()
       && (isPlainSecret(saved.apiKey) || Object.values(saved.apiKeys || {}).some(isPlainSecret));
-    if (needsMigration) {
+    if (needsOllamaMigration || needsSecretMigration) {
       // 迁移只是"顺手做的好事"，写盘失败绝不能影响已经读进来的配置
       try {
         persist();

@@ -48,11 +48,11 @@
     display: flex; align-items: center; justify-content: center;
   }
   #stage { display: block; width: 100%; height: 100%; }
-  #propLeft, #propRight, #propChips, #propPig, #propGamepad, #propChip, #propHandLeft, #propHandRight {
+  #propLeft, #propRight, #propHello, #question0, #question3, #question4, #question5, #propIdeaHand, #propLightbulb, #propThinkingHand, #propThinkingLoading, #propPigSticker, #propDrool, #propChips, #propPig, #propGamepad, #propChip, #propHandLeft, #propHandRight {
     position: absolute; width: 0; transform: translate(-50%, -50%);
     opacity: 0; transition: opacity .2s ease; pointer-events: none;
   }
-  #propLeft.show, #propRight.show, #propChips.show, #propPig.show, #propGamepad.show, #propChip.show, #propHandLeft.show, #propHandRight.show { opacity: 1; }
+  #propLeft.show, #propRight.show, #propHello.show, #question0.show, #question3.show, #question4.show, #question5.show, #propIdeaHand.show, #propLightbulb.show, #propThinkingHand.show, #propThinkingLoading.show, #propPigSticker.show, #propDrool.show, #propChips.show, #propPig.show, #propGamepad.show, #propChip.show, #propHandLeft.show, #propHandRight.show { opacity: 1; }
   #hint {
     position: absolute; left: 14px; bottom: 12px; font-size: 12px; color: var(--text-3);
     background: rgba(255,255,255,.86); border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px;
@@ -96,6 +96,17 @@
       <canvas id="stage"></canvas>
       <img id="propLeft" alt="">
       <img id="propRight" alt="">
+      <img id="propHello" alt="">
+      <img id="question0" alt="">
+      <img id="question3" alt="">
+      <img id="question4" alt="">
+      <img id="question5" alt="">
+      <img id="propIdeaHand" alt="">
+      <img id="propLightbulb" alt="">
+      <img id="propThinkingHand" alt="">
+      <img id="propThinkingLoading" alt="">
+      <img id="propPigSticker" alt="">
+      <img id="propDrool" alt="">
       <img id="propChips" alt="">
       <img id="propPig" alt="">
       <img id="propGamepad" alt="">

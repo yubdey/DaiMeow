@@ -19,7 +19,6 @@ const { ApiClient } = require('./services/api-client');
 const { captureScreen } = require('./services/screenshot');
 const { ModelServer } = require('./services/model-server');
 const { PersonalityManager } = require('./services/personality-manager');
-const { OllamaProvider } = require('./services/ollama-provider');
 const { GamepadPoller } = require('./services/gamepad-poller');
 const { PetDragController } = require('./services/pet-drag');
 const { NoticeManager } = require('./services/notice-manager');
@@ -36,7 +35,6 @@ const chatManager = new ChatManager();
 const statsTracker = new StatsTracker();
 const modelServer = new ModelServer();
 const personalityManager = new PersonalityManager();
-const ollamaProvider = new OllamaProvider();
 const noticeManager = new NoticeManager();
 const lifeTagsManager = new LifeTagsManager();
 let apiClient = null;
@@ -45,6 +43,10 @@ let mousePoller = null;
 let gamepadPoller = null;
 const petDragController = new PetDragController(() => petWindow, getConfig);
 let screenshotTimer = null;
+let petWindowReadyPromise = null;
+let petWindowReadyResolve = null;
+let petWindowReadyReject = null;
+let petMoveSaveTimer = null;
 
 app.whenReady().then(async () => {
   console.log('[DaiMeow] App ready');
@@ -60,57 +62,23 @@ app.whenReady().then(async () => {
   personalityManager.loadFromConfig();
 
   controlWindow = createControlWindow();
-  petWindow = createPetWindow();
   tray = createTray(controlWindow, (v) => { isQuitting = v; });
-
-  // 把桌宠窗口的显示/隐藏状态推给渲染层。
-  // 页面里的 document.hidden 在窗口「从未显示过」时不会翻转为 true（实测），
-  // 靠它判断"窗口是否可见"不可靠，所以待机动画改用这个显式信号。
-  const sendPetVisibility = (visible) => {
-    if (petWindow && !petWindow.isDestroyed()) {
-      petWindow.webContents.send('pet:visibility-changed', visible);
-    }
-  };
-  petWindow.on('show', () => sendPetVisibility(true));
-  petWindow.on('hide', () => sendPetVisibility(false));
-
-  // Sync position sliders after native drag (debounced)
-  let moveSaveTimer = null;
-  petWindow.on('move', () => {
-    // 程序化调整（setSize/setPosition）产生的 move 事件在时间戳窗口内直接忽略
-    if (petWindow._skipMoveUntil && Date.now() < petWindow._skipMoveUntil) return;
-    if (moveSaveTimer) clearTimeout(moveSaveTimer);
-    moveSaveTimer = setTimeout(() => {
-      if (petWindow.isDestroyed()) return;
-      const { width: screenW, height: screenH } = screen.getPrimaryDisplay().bounds;
-      const bounds = petWindow.getBounds();
-      const x = screenW > bounds.width ? bounds.x / (screenW - bounds.width) : 0;
-      const y = screenH > bounds.height ? bounds.y / (screenH - bounds.height) : 0;
-      saveConfig({ petPositionX: Math.max(0, Math.min(1, x)), petPositionY: Math.max(0, Math.min(1, y)) });
-      if (controlWindow && !controlWindow.isDestroyed()) {
-        controlWindow.webContents.send('main:position-sync', {
-          x: Math.round(Math.max(0, Math.min(1, x)) * 100),
-          y: Math.round(Math.max(0, Math.min(1, y)) * 100),
-        });
-      }
-    }, 300);
-  });
 
   apiClient = new ApiClient(
     { getAll: getConfig },
     chatManager,
     statsTracker,
-    personalityManager,
-    ollamaProvider
+    personalityManager
   );
 
   registerIpcHandlers({
     getPetWindow: () => petWindow,
+    ensurePetWindow,
+    markPetReady,
     getControlWindow: () => controlWindow,
     getChatManager: () => chatManager,
     getModelServer: () => modelServer,
     getPersonalityManager: () => personalityManager,
-    getOllamaProvider: () => ollamaProvider,
     getNoticeManager: () => noticeManager,
     getLifeTagsManager: () => lifeTagsManager,
     getStatsTracker: () => statsTracker,
@@ -165,6 +133,90 @@ app.whenReady().then(async () => {
   });
 });
 
+function sendPetVisibility(visible) {
+  if (petWindow && !petWindow.isDestroyed()) {
+    petWindow.webContents.send('pet:visibility-changed', visible);
+  }
+}
+
+function ensurePetWindow() {
+  if (petWindow && !petWindow.isDestroyed()) {
+    return petWindowReadyPromise || Promise.resolve(petWindow);
+  }
+
+  petWindowReadyPromise = new Promise((resolve, reject) => {
+    petWindowReadyResolve = resolve;
+    petWindowReadyReject = reject;
+  });
+
+  let win;
+  try {
+    win = createPetWindow();
+    petWindow = win;
+  } catch (err) {
+    petWindowReadyResolve = null;
+    petWindowReadyReject = null;
+    petWindowReadyPromise = null;
+    throw err;
+  }
+
+  win.webContents.once('did-fail-load', (event, code, description) => {
+    if (petWindowReadyReject) {
+      petWindowReadyReject(new Error(`Pet window failed to load (${code}): ${description}`));
+      petWindowReadyResolve = null;
+      petWindowReadyReject = null;
+    }
+    if (!win.isDestroyed()) win.destroy();
+  });
+
+  win.on('show', () => sendPetVisibility(true));
+  win.on('hide', () => sendPetVisibility(false));
+
+  // Sync position sliders after native drag (debounced)
+  win.on('move', () => {
+    // 程序化调整（setSize/setPosition）产生的 move 事件在时间戳窗口内直接忽略
+    if (win._skipMoveUntil && Date.now() < win._skipMoveUntil) return;
+    if (petMoveSaveTimer) clearTimeout(petMoveSaveTimer);
+    petMoveSaveTimer = setTimeout(() => {
+      if (win.isDestroyed()) return;
+      const { width: screenW, height: screenH } = screen.getPrimaryDisplay().bounds;
+      const bounds = win.getBounds();
+      const x = screenW > bounds.width ? bounds.x / (screenW - bounds.width) : 0;
+      const y = screenH > bounds.height ? bounds.y / (screenH - bounds.height) : 0;
+      saveConfig({ petPositionX: Math.max(0, Math.min(1, x)), petPositionY: Math.max(0, Math.min(1, y)) });
+      if (controlWindow && !controlWindow.isDestroyed()) {
+        controlWindow.webContents.send('main:position-sync', {
+          x: Math.round(Math.max(0, Math.min(1, x)) * 100),
+          y: Math.round(Math.max(0, Math.min(1, y)) * 100),
+        });
+      }
+    }, 300);
+  });
+
+  win.on('closed', () => {
+    if (petMoveSaveTimer) {
+      clearTimeout(petMoveSaveTimer);
+      petMoveSaveTimer = null;
+    }
+    if (petWindowReadyReject) {
+      petWindowReadyReject(new Error('Pet window closed before ready'));
+    }
+    petWindowReadyResolve = null;
+    petWindowReadyReject = null;
+    petWindowReadyPromise = null;
+    if (petWindow === win) petWindow = null;
+  });
+
+  return petWindowReadyPromise;
+}
+
+function markPetReady() {
+  if (!petWindowReadyResolve || !petWindow || petWindow.isDestroyed()) return;
+  const resolve = petWindowReadyResolve;
+  petWindowReadyResolve = null;
+  petWindowReadyReject = null;
+  resolve(petWindow);
+}
 app.on('window-all-closed', () => {});
 app.on('before-quit', () => {
   isQuitting = true;
@@ -251,7 +303,6 @@ function stopLoop() {
 }
 
 let cycleRunning = false;
-let cycleIndex = 0;
 
 /** 呆喵当前所在显示器的 id（多显示器时决定截哪块屏；取不到返回 null，由截图侧回退） */
 function getPetDisplayId() {
@@ -273,13 +324,10 @@ async function runCycle() {
 
   cycleRunning = true;
   try {
-    // 场景识别与台词共用同一次请求；sceneSampleEvery 抽样可降低识别频率（默认每张都识别）
-    const every = Math.max(1, parseInt(getConfig().sceneSampleEvery, 10) || 1);
-    cycleIndex += 1;
-    const classifyScene = every === 1 || (cycleIndex - 1) % every === 0;
-
+    // 场景识别与台词共用同一次多模态请求（不会多发一次请求、也不多消耗图片 Token），
+    // 所以固定每张都识别；原先的「场景识别频率」抽样开关已从设置里移除。
     const base64Image = await captureScreen({ displayId: getPetDisplayId() });
-    const { reply, scene } = await apiClient.sendScreenshot(base64Image, { classifyScene });
+    const { reply, scene } = await apiClient.sendScreenshot(base64Image);
     if (scene) lifeTagsManager.recordScene(scene);
 
     if (controlWindow && !controlWindow.isDestroyed()) {

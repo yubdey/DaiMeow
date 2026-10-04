@@ -1,6 +1,8 @@
 // DaiMeow Pet Renderer
 import * as PIXI from 'pixi.js';
 import { Live2DModel, MotionPriority } from 'pixi-live2d-display';
+import { ACTION_POOL_KEYS, getActionIdsForPool } from './action-definitions.js';
+import { createActionController } from './action-controller.js';
 
 const petAPI = window.petAPI;
 const canvas = document.getElementById('petCanvas');
@@ -44,7 +46,7 @@ const SIT_EXPRESSION = 'expression1';
 // 这两个动作由表情通道实现，不在 model3.json 的 Motions 里
 const EXPRESSION_ACTIONS = new Set([SIT_ACTION, STAND_ACTION]);
 
-// 「啦啦啦」：跳这段动作时，手里的两个啦啦球会亮出来（球是独立 PNG，跟着左右手走，见 updateProps）
+// 「啦啦啦」：跳这段动作时，手里的两个啦啦球会亮出来（球是独立 PNG，跟着左右手走，见 renderCheerProps）
 const CHEER_ACTION = 'cheer';
 const CHEER_PROP_MS = 2300;      // 球露出来的时长，和 cheer.motion3.json 的 2.35s 对齐
 const PROP_CANVAS_SIZE = 460;    // 球的直径，按模型画布像素计（会和模型一起缩放）
@@ -81,6 +83,75 @@ const CHIPS_KEY = [
   { t: 1.00, handX: 0,  handY: 0,    handRot: 0,  chip: 0, chipX: 0,   chipY: 0,    chipRot: 0 },
 ];
 
+// 「Hello」：用模型原爪贴图挥手，另一只手保持模型原本的位置；文字素材独立叠在左上方。
+const HELLO_ACTION = 'hello';
+const HELLO_MOTION_MS = 1530;        // 3 轮挥手，每轮 510ms
+const HELLO_RESTORE_MS = 300;        // 收尾时让外置原爪和模型手平滑交接
+const HELLO_PROP_MS = HELLO_MOTION_MS + HELLO_RESTORE_MS;
+const HELLO_CYCLE_MS = 510;
+const HELLO_TEXT_W = 760;            // 文字图片宽度（画布像素）
+const HELLO_TEXT_ANCHOR = [-450, -920];
+const HELLO_TEXT_ROT = -3;
+const HELLO_HAND_ANCHOR = [0, -540]; // 挥手原爪整体上移
+// 17 帧挥手位置：相对模型原爪中心的画布像素偏移，数据来自 Hello.gif 的黄色手部轨迹。
+const HELLO_WAVE_KEYS = [
+  [0, 0], [67, 67], [79, 141], [5, 171], [-120, 162], [-248, 155], [-274, 157],
+  [-280, 139], [-176, 106], [-43, 97], [56, 125], [71, 150], [13, 134],
+  [-82, 85], [-167, 33], [-200, -3], [-162, -30],
+];
+
+// 「流口水」：小猪贴纸挂在额头，最后阶段从嘴下伸出口水。
+const DROOL_ACTION = 'drool';
+const DROOL_STICKER_W = 600;
+const DROOL_STICKER_ANCHOR = [0, -500];
+const DROOL_NOD_PERIOD_MS = 510;
+const DROOL_NOD_Y = 90;
+const DROOL_W = 54;
+const DROOL_ANCHOR = [0, 20];
+const DROOL_START_MS = 1620;
+const DROOL_FULL_MS = 2220;
+const DROOL_HOLD_MS = 300;
+const DROOL_PROP_MS = DROOL_FULL_MS + DROOL_HOLD_MS;
+
+// 「问号」：半睁眼疑惑，头顶和两侧依次冒出问号。
+const QUESTION_ACTION = 'question';
+const QUESTION_PROP_MS = 1800;       // 耳朵抖动1 + 问号逐个弹出，末尾延长 150ms
+const QUESTION_W = 300;
+const QUESTION_PARTICLES = [
+  { id: 'question-0', delay: 600,  from: [-520, -620], to: [-560, -760], rot: -8 },
+  { id: 'question-3', delay: 800,  from: [560, -560],  to: [620, -700],  rot: 9 },
+  { id: 'question-4', delay: 1000, from: [-40, -790],  to: [-60, -920],  rot: -5 },
+  { id: 'question-5', delay: 1200, from: [300, -380],  to: [340, -500],  rot: 6 },
+];
+
+// 「灵光一闪」：手部保持思考姿势，眼睛左右寻找，灯泡短暂出现。
+const IDEA_ACTION = 'idea';
+const IDEA_MOTION_MS = 1500;         // 手势来回 + 灯泡
+const IDEA_RESTORE_MS = 250;         // 收尾恢复模型原手
+const IDEA_PROP_MS = IDEA_MOTION_MS + IDEA_RESTORE_MS;
+const IDEA_HAND_W = 350;
+const IDEA_HAND_Y = 300;
+const IDEA_HAND_LEFT_X = -380;
+const IDEA_HAND_RIGHT_X = -140;
+const IDEA_HAND_MOVE_MS = 600;
+const IDEA_BULB_W = 320;
+const IDEA_BULB_ANCHOR = [-560, -500];
+const IDEA_BULB_IN_START_MS = 620;
+const IDEA_BULB_FULL_MS = 820;
+const IDEA_BULB_OUT_START_MS = 1200;
+const IDEA_BULB_END_MS = 1350;
+
+// 「思考中」：思考手势保持在嘴下，额头加载图标持续旋转，眼睛左右寻找。
+const THINKING_ACTION = 'thinking';
+const THINKING_PROP_MS = 1800;       // 两轮手势后收尾（每轮 700ms）
+const THINKING_HAND_W = IDEA_HAND_W;
+const THINKING_HAND_Y = IDEA_HAND_Y;
+const THINKING_HAND_CYCLE_MS = 700;
+const THINKING_HAND_CYCLES = 2;
+const THINKING_HAND_MOVE_MS = THINKING_HAND_CYCLE_MS * THINKING_HAND_CYCLES;
+const THINKING_LOADING_W = 750;
+const THINKING_LOADING_ANCHOR = [0, -450];
+const THINKING_DROOL_W = 40;
 
 // 「抱小猪」：小猪身体和小猪两侧的贴图手都是外部 PNG，位置由模型手部顶点算出来。
 // 参考 GIF 17 帧 × 30ms 循环：小猪和头部轻轻上下蹭，左右前爪交替抬起/放下，形成抱住摇晃的感觉。
@@ -130,20 +201,10 @@ const GAMEPAD_PAW_SEP = 700;       // 两只手中心距离
 const GAMEPAD_PAW_Y = 0;
 const GAMEPAD_CENTER_OFFSET = [0, -20];
 const GAMEPAD_ENTER_DROP = 110;
-// 站起状态的待机池：原有全部动作（点头 摇头 看左 看右 抬头 低头 耳朵抖动1 耳朵抖动2 开心 惊讶 难过 啦啦啦）
-const STAND_IDLE_ACTION_NAMES = [
-  'nod', 'shake_head', 'look_left', 'look_right', 'look_up', 'look_down',
-  'blink', 'ear_twitch', 'happy', 'surprised', 'sad', CHEER_ACTION, PIG_ACTION, GAMEPAD_ACTION,
-  CHIPS_ACTION, CHIPS_TWO_ACTION,
-];
-
-// 坐下状态的待机池：按动作表保留坐姿可做动作（含抱小猪 / 玩游戏 / 吃薯片）
-const SIT_IDLE_ACTION_NAMES = [
-  'nod', 'shake_head', 'look_left', 'look_right', 'look_up', 'look_down',
-  'blink', 'ear_twitch', PIG_ACTION, GAMEPAD_ACTION, CHIPS_ACTION, CHIPS_TWO_ACTION,
-];
-// 点击回应池：按动作表配置；坐下时会再按坐姿池过滤
-const CLICK_ACTION_NAMES = ['nod', 'shake_head', 'blink', 'ear_twitch', 'happy', 'surprised', 'sad', CHEER_ACTION, PIG_ACTION, GAMEPAD_ACTION, CHIPS_ACTION, CHIPS_TWO_ACTION];
+// 四个触发池均由 action-definitions.js 的单一元数据表生成，避免新增动作时漏改某一组。
+const STAND_IDLE_ACTION_NAMES = getActionIdsForPool(ACTION_POOL_KEYS.IDLE_STAND);
+const SIT_IDLE_ACTION_NAMES = getActionIdsForPool(ACTION_POOL_KEYS.IDLE_SIT);
+const CLICK_ACTION_NAMES = getActionIdsForPool(ACTION_POOL_KEYS.CLICK_STAND);
 
 // 待机动作的随机间隔（毫秒）
 const IDLE_ACTION_MIN_MS = 5000;
@@ -159,15 +220,20 @@ const STATE_MAX_MS = 120000;
 // 掷到坐下的概率（剩下 70% 掷站起）
 const SIT_STATE_WEIGHT = 0.3;
 
-const actionPools = { idleStand: [], idleSit: [], click: [], clickSit: [] };
 // 动作名 → [分组, 序号]，分组与序号都取自 model3.json 里登记的 Motions
 const motionByName = new Map();
-// 记住上一次播的动作名，避免连着重复（引擎也会拒绝「同一动作正在播」）
-const lastPlayed = { idle: null, click: null };
 
 // --- 啦啦球（外部 PNG 跟随左右手）---
 const propLeft = document.getElementById('prop-left');
 const propRight = document.getElementById('prop-right');
+const propHello = document.getElementById('prop-hello');
+const propQuestions = QUESTION_PARTICLES.map((p) => ({ ...p, el: document.getElementById(p.id) }));
+const propIdeaHand = document.getElementById('prop-idea-hand');
+const propLightbulb = document.getElementById('prop-lightbulb');
+const propThinkingHand = document.getElementById('prop-thinking-hand');
+const propThinkingLoading = document.getElementById('prop-thinking-loading');
+const propPigSticker = document.getElementById('prop-pig-sticker');
+const propDrool = document.getElementById('prop-drool');
 const propChips = document.getElementById('prop-chips');
 const propPig = document.getElementById('prop-pig');
 const propGamepad = document.getElementById('prop-gamepad');
@@ -178,6 +244,11 @@ const propSrcPoint = new PIXI.Point();   // 画布坐标（输入）
 const propDstPoint = new PIXI.Point();   // 窗口坐标（输出），复用避免每帧新建
 let pawDrawables = null;                 // [左手, 右手] 的 drawable 序号；解析不到就为 null
 let propUntil = 0;                       // 球显示到什么时候（performance.now() 毫秒）
+let helloStartAt = 0;                    // Hello 动作开始时刻（0 = 没在播）
+let droolStartAt = 0;                    // 流口水动作开始时刻（0 = 没在播）
+let questionStartAt = 0;                 // 问号动作开始时刻（0 = 没在播）
+let ideaStartAt = 0;                     // 灵光一闪动作开始时刻（0 = 没在播）
+let thinkingStartAt = 0;                 // 思考中动作开始时刻（0 = 没在播）
 let chipsStartAt = 0;                    // 吃薯片动作开始时刻（0 = 没在播）
 let chipsCycles = 0;                     // 当前吃薯片动作包含几轮
 let pigStartAt = 0;                      // 抱小猪动作开始时刻（0 = 没在播）
@@ -187,12 +258,92 @@ function chipsPlaybackMs() {
   if (chipsCycles === 2) return CHIPS_TWO_SECOND_START_MS + CHIPS_CYCLE_MS;
   return CHIPS_CYCLE_MS;
 }
-// 程序始终维护当前站姿状态；模型没有坐姿表情时会退化成常站（见 buildActionPools）
-let currentState = STATE_STAND;
-let canSit = true;
-let idleActionTimer = null;
-let stateTimer = null;
-let lastReactAt = 0;
+
+// 特殊道具动作的生命周期注册表：start 时点亮，stop 时清理，活动状态统一维护。
+// 具体几何计算拆到独立 renderer，动作生命周期只负责选中和清理。
+let activePropAction = null;
+
+function createChipsPropHandler(cycles) {
+  return {
+    start(now) { chipsCycles = cycles; chipsStartAt = now; },
+    stop() { chipsStartAt = 0; chipsCycles = 0; },
+    isFinished(now) { return now - chipsStartAt >= chipsPlaybackMs(); },
+    handsOpacity(now) { return handsOpacityAt(now - chipsStartAt); },
+  };
+}
+
+const ACTION_PROP_HANDLERS = {
+  [CHEER_ACTION]: {
+    start(now) { propUntil = now + CHEER_PROP_MS; },
+    stop() { propUntil = 0; },
+    isFinished(now) { return !propUntil || now >= propUntil; },
+  },
+  [HELLO_ACTION]: {
+    start(now) { helloStartAt = now; },
+    stop() { helloStartAt = 0; },
+    isFinished(now, startedAt) { return now - startedAt >= HELLO_PROP_MS; },
+    handsOpacity(now, startedAt) { return helloHandsOpacityAt(now - startedAt); },
+  },
+  [DROOL_ACTION]: {
+    start(now) { droolStartAt = now; },
+    stop() { droolStartAt = 0; },
+    isFinished(now, startedAt) { return now - startedAt >= DROOL_PROP_MS; },
+  },
+  [QUESTION_ACTION]: {
+    start(now) { questionStartAt = now; },
+    stop() { questionStartAt = 0; },
+    isFinished(now, startedAt) { return now - startedAt >= QUESTION_PROP_MS; },
+  },
+  [IDEA_ACTION]: {
+    start(now) { ideaStartAt = now; },
+    stop() { ideaStartAt = 0; },
+    isFinished(now, startedAt) { return now - startedAt >= IDEA_PROP_MS; },
+    handsOpacity(now, startedAt) { return ideaHandsOpacityAt(now - startedAt); },
+  },
+  [THINKING_ACTION]: {
+    start(now) { thinkingStartAt = now; },
+    stop() { thinkingStartAt = 0; },
+    isFinished(now, startedAt) { return now - startedAt >= THINKING_PROP_MS; },
+    handsOpacity() { return 0; },
+  },
+  [CHIPS_ACTION]: createChipsPropHandler(1),
+  [CHIPS_TWO_ACTION]: createChipsPropHandler(2),
+  [PIG_ACTION]: {
+    start(now) { pigStartAt = now; },
+    stop() { pigStartAt = 0; },
+    isFinished(now, startedAt) { return now - startedAt >= PIG_PROP_MS; },
+    handsOpacity(now, startedAt) { return pigHandsOpacityAt(now - startedAt); },
+  },
+  [GAMEPAD_ACTION]: {
+    start(now) { gamepadStartAt = now; },
+    stop() { gamepadStartAt = 0; },
+    isFinished(now, startedAt) { return now - startedAt >= GAMEPAD_PROP_MS; },
+    handsOpacity(now, startedAt) { return gamepadHandsOpacityAt(now - startedAt); },
+  },
+};
+
+function stopActivePropAction() {
+  if (!activePropAction) return;
+  if (activePropAction.handler.stop) activePropAction.handler.stop();
+  activePropAction = null;
+}
+
+function startActivePropAction(name, now) {
+  stopActivePropAction();
+  const handler = ACTION_PROP_HANDLERS[name];
+  if (!handler) return;
+  activePropAction = { id: name, startedAt: now, handler };
+  handler.start(now, name);
+}
+
+function refreshActivePropAction(now) {
+  if (!activePropAction) return null;
+  if (activePropAction.handler.isFinished(now, activePropAction.startedAt)) {
+    stopActivePropAction();
+    return null;
+  }
+  return activePropAction;
+}
 
 // --- Mouse / Gamepad state ---
 let targetX = 0, targetY = 0;
@@ -210,6 +361,24 @@ let isFixed = false;
 // 所以待机动画用主进程下发的显式信号，初始值按"隐藏"算。
 let isWindowVisible = false;
 
+const actionController = createActionController({
+  playAction,
+  isWindowVisible: () => isWindowVisible,
+  isMotionPlaying,
+  sitAction: SIT_ACTION,
+  standAction: STAND_ACTION,
+  idlePriority: MotionPriority.IDLE,
+  forcePriority: MotionPriority.FORCE,
+  stateStand: STATE_STAND,
+  stateSit: STATE_SIT,
+  idleMinMs: IDLE_ACTION_MIN_MS,
+  idleMaxMs: IDLE_ACTION_MAX_MS,
+  clickCooldownMs: CLICK_REACT_COOLDOWN_MS,
+  stateMinMs: STATE_MIN_MS,
+  stateMaxMs: STATE_MAX_MS,
+  sitWeight: SIT_STATE_WEIGHT,
+});
+
 // --- Load model ---
 async function loadModel() {
   try {
@@ -221,8 +390,7 @@ async function loadModel() {
     applyLayout(true); // snap on load
     installHandsTicker();
     buildActionPools();
-    scheduleIdleAction();
-    scheduleStateSwitch();
+    actionController.start();
     petAPI.notifyReady(app.screen.width, app.screen.height);
   } catch (err) {
     console.error('Model load failed:', err.message, err.stack);
@@ -429,7 +597,7 @@ function endPointerGesture(e) {
     pointerCaptureEl = null;
   }
   // 基本没动 + 时间够短 → 当成一次点击，回一个随机动作
-  if (!state.dragged && performance.now() - state.t < CLICK_MAX_DURATION_MS) reactToClick();
+  if (!state.dragged && performance.now() - state.t < CLICK_MAX_DURATION_MS) actionController.reactToClick();
 }
 
 document.addEventListener('pointerup', endPointerGesture);
@@ -512,21 +680,25 @@ function buildActionPools() {
   }
   const expressions = availableExpressionActions();
   const available = (name) => (EXPRESSION_ACTIONS.has(name) ? expressions.has(name) : motionByName.has(name));
-  actionPools.idleStand = STAND_IDLE_ACTION_NAMES.filter(available);
-  actionPools.idleSit = SIT_IDLE_ACTION_NAMES.filter(available);
-  actionPools.click = CLICK_ACTION_NAMES.filter(available);
-  // 坐着的时候点击也只会做坐姿做得出来的动作（避免坐着突然摇摆/前倾）
-  actionPools.clickSit = actionPools.click.filter((name) => SIT_IDLE_ACTION_NAMES.includes(name));
+  const pools = {
+    idleStand: STAND_IDLE_ACTION_NAMES.filter(available),
+    idleSit: SIT_IDLE_ACTION_NAMES.filter(available),
+    click: CLICK_ACTION_NAMES.filter(available),
+    // 坐着的时候点击也只会做坐姿做得出来的动作（避免坐着突然摇摆/前倾）
+    clickSit: getActionIdsForPool(ACTION_POOL_KEYS.CLICK_SIT).filter(available),
+  };
+  actionController.setPools(pools);
 
   const missing = STAND_IDLE_ACTION_NAMES.filter((n) => !available(n));
   if (missing.length) petAPI.logError('待机动作缺失: ' + missing.join(', '));
   const missingSit = SIT_IDLE_ACTION_NAMES.filter((n) => !available(n));
   if (missingSit.length) petAPI.logError('坐姿动作缺失: ' + missingSit.join(', '));
+  const missingClick = [...CLICK_ACTION_NAMES, ...getActionIdsForPool(ACTION_POOL_KEYS.CLICK_SIT)]
+    .filter((n, i, list) => list.indexOf(n) === i && !available(n));
+  if (missingClick.length) petAPI.logError('点击动作缺失: ' + missingClick.join(', '));
 
   // 坐姿是靠表情通道实现的，模型里没有这个表情就只能一直站着，别去反复尝试
-  canSit = expressions.has(SIT_ACTION) && expressions.has(STAND_ACTION);
-  if (!canSit) currentState = STATE_STAND;
-
+  actionController.setCanSit(expressions.has(SIT_ACTION) && expressions.has(STAND_ACTION));
   // 啦啦球要贴的位置：左右爪
   pawDrawables = resolvePawDrawables();
   if (!pawDrawables) petAPI.logError('啦啦球：没找到左右手的 drawable，跳啦啦啦时不会显示球');
@@ -556,32 +728,9 @@ function isMotionPlaying() {
   }
 }
 
-/** 普通动作按当前状态选池子：站起状态用原有全部动作，坐下状态只有坐姿友好的那几个 */
-function poolForCurrentState(poolName) {
-  if (poolName === 'idle') return currentState === STATE_SIT ? actionPools.idleSit : actionPools.idleStand;
-  if (poolName === 'click') return currentState === STATE_SIT ? actionPools.clickSit : actionPools.click;
-  return actionPools[poolName];
-}
-
-/** 从指定动作池里随机挑一个播（避免与上一次重复） */
-function playRandomAction(poolName, priority) {
-  const pool = poolForCurrentState(poolName);
-  if (!pool || pool.length === 0 || !live2dModel) return;
-
-  const previous = lastPlayed[poolName];
-  let candidates = pool;
-  if (pool.length > 1 && previous) {
-    const filtered = pool.filter((n) => n !== previous);
-    if (filtered.length) candidates = filtered;
-  }
-  const picked = candidates[Math.floor(Math.random() * candidates.length)];
-  lastPlayed[poolName] = picked;
-  playAction(picked, priority);
-}
-
 /**
  * 把动作播出去：动作曲线交给引擎的动作播放，坐/站交给表情通道。
- * 坐/站只是「摆姿势」，当前处于哪个状态由状态机（scheduleStateSwitch）说了算。
+ * 坐/站只是「摆姿势」，当前处于哪个状态由 action-controller.js 的状态机说了算。
  */
 function playAction(name, priority) {
   if (name === SIT_ACTION) {
@@ -594,23 +743,9 @@ function playAction(name, priority) {
   }
   const motion = motionByName.get(name);
   if (motion) {
-    // 新动作开始前清掉上一套外部道具，避免动作切换时残留
-    propUntil = 0;
-    chipsStartAt = 0;
-    chipsCycles = 0;
-    pigStartAt = 0;
-    gamepadStartAt = 0;
-    // 啦啦啦：跳的时候把两个啦啦球亮出来（球的位置由 updateProps 每帧贴到手上）
-    if (name === CHEER_ACTION) propUntil = performance.now() + CHEER_PROP_MS;
-    // 吃薯片：记下开始时刻和轮数，之后由 updateProps 每帧摆放袋子 / 双手 / 单片薯片
-    if (name === CHIPS_ACTION || name === CHIPS_TWO_ACTION) {
-      chipsCycles = name === CHIPS_TWO_ACTION ? 2 : 1;
-      chipsStartAt = performance.now();
-    }
-    // 抱小猪：记下开始时刻，之后由 updateProps 每帧摆放小猪 / 双手
-    if (name === PIG_ACTION) pigStartAt = performance.now();
-    // 玩游戏：记下开始时刻，之后由 updateProps 每帧摆放手柄 / 双手
-    if (name === GAMEPAD_ACTION) gamepadStartAt = performance.now();
+    // 新动作开始前统一收掉上一套外部道具，再按注册表启动当前动作的道具。
+    const now = performance.now();
+    startActivePropAction(name, now);
     live2dModel.motion(motion[0], motion[1], priority);
   }
 }
@@ -755,6 +890,100 @@ function eatChipsPose(now) {
   };
 }
 
+/** Hello 的 17 帧挥手轨迹，使用周期 Catmull-Rom 插值保证循环处平顺。 */
+function sampleHelloWave(u) {
+  const keys = HELLO_WAVE_KEYS;
+  const n = keys.length;
+  const pos = (((u % 1) + 1) % 1) * n;
+  const i = Math.floor(pos);
+  const f = pos - i;
+  const k0 = keys[(i - 1 + n) % n];
+  const k1 = keys[i % n];
+  const k2 = keys[(i + 1) % n];
+  const k3 = keys[(i + 2) % n];
+  const e = f * f * (3 - 2 * f);
+  const cr = (v0, v1, v2, v3) => 0.5 * ((2 * v1) + (-v0 + v2) * e
+    + (2 * v0 - 5 * v1 + 4 * v2 - v3) * e * e
+    + (-v0 + 3 * v1 - 3 * v2 + v3) * e * e * e);
+  return [0, 1].map((j) => cr(k0[j], k1[j], k2[j], k3[j]));
+}
+
+/** Hello 这一帧的挥手与文字浮动。 */
+function helloPose(now) {
+  const neutral = { handX: 0, handY: 0, handRot: 0, textY: 0, textRot: HELLO_TEXT_ROT };
+  if (!helloStartAt) return neutral;
+  const elapsed = now - helloStartAt;
+  if (elapsed < 0 || elapsed >= HELLO_MOTION_MS) return neutral;
+  const u = (elapsed % HELLO_CYCLE_MS) / HELLO_CYCLE_MS;
+  const wave = sampleHelloWave(u);
+  const phase = 2 * Math.PI * u;
+  return {
+    handX: wave[0],
+    handY: wave[1],
+    handRot: -4 * Math.sin(phase),
+    textY: -10 * Math.sin(phase),
+    textRot: HELLO_TEXT_ROT + 2 * Math.sin(phase),
+  };
+}
+
+/** Hello 收尾时的交接进度：0 = 外置原爪，1 = 模型自带手。 */
+function helloRestoreProgress(elapsed) {
+  if (elapsed <= HELLO_MOTION_MS) return 0;
+  if (elapsed >= HELLO_PROP_MS) return 1;
+  const t = (elapsed - HELLO_MOTION_MS) / HELLO_RESTORE_MS;
+  return t * t * (3 - 2 * t);
+}
+
+/** Hello 期间模型自带手的不透明度；只在收尾阶段平滑恢复。 */
+function helloHandsOpacityAt(elapsed) {
+  if (elapsed <= 0 || elapsed >= HELLO_PROP_MS) return 1;
+  return helloRestoreProgress(elapsed);
+}
+
+/** 问号贴纸的逐个出现、上浮和轻微旋转。 */
+function questionParticlePose(particle, elapsed) {
+  const age = elapsed - particle.delay;
+  if (age < 0) return null;
+  const enter = Math.min(1, age / 180);
+  const move = Math.min(1, age / 480);
+  const ease = 1 - Math.pow(1 - move, 3);
+  return {
+    x: particle.from[0] + (particle.to[0] - particle.from[0]) * ease,
+    y: particle.from[1] + (particle.to[1] - particle.from[1]) * ease,
+    scale: 0.28 + 0.72 * (enter * enter * (3 - 2 * enter)),
+    opacity: enter,
+    rot: particle.rot * ease,
+  };
+}
+
+/** 思考手在下巴位置完成一次左→右→左往返。 */
+function ideaHandX(elapsed) {
+  const t = Math.max(0, Math.min(1, elapsed / IDEA_HAND_MOVE_MS));
+  const half = t < 0.5 ? t * 2 : (1 - t) * 2;
+  const e = half * half * (3 - 2 * half);
+  return IDEA_HAND_LEFT_X + (IDEA_HAND_RIGHT_X - IDEA_HAND_LEFT_X) * e;
+}
+
+/** 思考中手势的两轮横向往返，每轮 700ms。 */
+function thinkingHandX(elapsed) {
+  if (elapsed >= THINKING_HAND_MOVE_MS) return IDEA_HAND_LEFT_X;
+  const cycleT = (elapsed % THINKING_HAND_CYCLE_MS) / THINKING_HAND_CYCLE_MS;
+  const half = cycleT < 0.5 ? cycleT * 2 : (1 - cycleT) * 2;
+  const e = half * half * (3 - 2 * half);
+  return IDEA_HAND_LEFT_X + (IDEA_HAND_RIGHT_X - IDEA_HAND_LEFT_X) * e;
+}
+
+function ideaRestoreProgress(elapsed) {
+  if (elapsed <= IDEA_MOTION_MS) return 0;
+  if (elapsed >= IDEA_PROP_MS) return 1;
+  const t = (elapsed - IDEA_MOTION_MS) / IDEA_RESTORE_MS;
+  return t * t * (3 - 2 * t);
+}
+
+function ideaHandsOpacityAt(elapsed) {
+  if (elapsed <= 0 || elapsed >= IDEA_PROP_MS) return 1;
+  return ideaRestoreProgress(elapsed);
+}
 
 /** 从 17 帧循环数据中取一帧并做周期 Catmull-Rom 插值（抱小猪用）。 */
 function samplePigLoop(u) {
@@ -837,18 +1066,10 @@ function handsOpacityAt(elapsed, totalMs = chipsPlaybackMs()) {
 function installHandsTicker() {
   PIXI.Ticker.shared.add(() => {
     const now = performance.now();
-    const chipsElapsed = chipsStartAt ? now - chipsStartAt : -1;
-    const pigElapsed = pigStartAt ? now - pigStartAt : -1;
-    const gamepadElapsed = gamepadStartAt ? now - gamepadStartAt : -1;
-    if (chipsStartAt && chipsElapsed >= chipsPlaybackMs()) {
-      chipsStartAt = 0;
-      chipsCycles = 0;
-    }
-    if (pigStartAt && pigElapsed >= PIG_PROP_MS) pigStartAt = 0;
-    if (gamepadStartAt && gamepadElapsed >= GAMEPAD_PROP_MS) gamepadStartAt = 0;
-    const opacity = chipsStartAt
-      ? handsOpacityAt(chipsElapsed)
-      : (pigStartAt ? pigHandsOpacityAt(pigElapsed) : (gamepadStartAt ? gamepadHandsOpacityAt(gamepadElapsed) : 1));
+    const active = refreshActivePropAction(now);
+    const opacity = active && active.handler.handsOpacity
+      ? active.handler.handsOpacity(now, active.startedAt)
+      : 1;
     setHandsOpacity(opacity);
   }, null, PIXI.UPDATE_PRIORITY.LOW);
 }
@@ -872,8 +1093,17 @@ function setHandsOpacity(value) {
  * 修法：每个元素在「自己不可见」的那一帧就自己清理，不再依赖「四个道具全不可见」
  * 那个总清理分支（那条分支在别的道具正显示时根本不会执行，这正是残留的成因）。
  */
+function ensurePropLoaded(el) {
+  if (!el || el.dataset.loaded === '1') return;
+  const src = el.dataset.src;
+  if (!src) return;
+  el.src = src;
+  el.dataset.loaded = '1';
+}
+
 function setPropVisible(el, visible) {
   if (!el) return;
+  if (visible) ensurePropLoaded(el);
   const cls = visible ? 'prop show' : 'prop';
   if (el.className !== cls) el.className = cls;
   if (!visible && el.style.opacity !== '') el.style.opacity = '';
@@ -884,29 +1114,9 @@ function setPropVisible(el, visible) {
  * 球和手的位置由引擎的 getDrawableVertices + toGlobal 换算成窗口像素，
  * 所以模型怎么缩放/移动，道具都跟着走。
  */
-function updateProps(now) {
-  if (!pawDrawables) return;
-  const ballsVisible = !!(propLeft && propRight) && now < propUntil;
-  const chipsVisible = !!propChips && chipsStartAt > 0 && (now - chipsStartAt) < chipsPlaybackMs();
-  const pigVisible = !!propPig && pigStartAt > 0 && (now - pigStartAt) < PIG_PROP_MS;
-  const gamepadVisible = !!propGamepad && gamepadStartAt > 0 && (now - gamepadStartAt) < GAMEPAD_PROP_MS;
-
-  setPropVisible(propLeft, ballsVisible);
-  setPropVisible(propRight, ballsVisible);
-  setPropVisible(propChips, chipsVisible);
-  setPropVisible(propChip, chipsVisible);
-  setPropVisible(propPig, pigVisible);
-  setPropVisible(propGamepad, gamepadVisible);
-  const handsVisible = chipsVisible || pigVisible || gamepadVisible;
-  setPropVisible(propHandLeft, handsVisible);
-  setPropVisible(propHandRight, handsVisible);
-
-  if (!ballsVisible && !handsVisible) return;
-
-  const centers = pawCentersOnScreen();
-  if (!centers) return;
-
-  if (ballsVisible) {
+// 每个动作的逐帧道具渲染器：只负责把已经调好的几何计算画到 DOM 上。
+// updateProps 只负责选中当前渲染器，不再把所有动作分支串在一个函数里。
+function renderCheerProps(now, centers) {
     const size = PROP_CANVAS_SIZE * currentScale;
     for (let k = 0; k < 2; k++) {
       const el = k === 0 ? propLeft : propRight;
@@ -914,9 +1124,9 @@ function updateProps(now) {
       el.style.top = centers[k][1] + 'px';
       el.style.width = size + 'px';
     }
-  }
+}
 
-  if (chipsVisible) {
+function renderChipsProps(now, centers) {
     const pose = eatChipsPose(now);
     const mid = [
       (centers[0][0] + centers[1][0]) / 2,
@@ -949,7 +1159,10 @@ function updateProps(now) {
     propChip.style.top = (bagY + (CHIPS_CHIP_FROM_BAG[1] + pose.chipY) * currentScale) + 'px';
     propChip.style.width = (CHIPS_CHIP_W * currentScale) + 'px';
     propChip.style.transform = 'translate(-50%, -50%) rotate(' + pose.chipRot + 'deg)';
-  } else if (pigVisible) {
+
+}
+
+function renderPigProps(now, centers) {
     const nowValue = now;
     const elapsed = nowValue - pigStartAt;
     const enterT = Math.max(0, Math.min(1, elapsed / PIG_FADE_MS));
@@ -997,7 +1210,10 @@ function updateProps(now) {
     propHandRight.style.top = rightY + 'px';
     propHandRight.style.width = handW + 'px';
     propHandRight.style.transform = 'translate(-50%, -50%) rotate(' + (-rot * 0.35) + 'deg)';
-  } else if (gamepadVisible) {
+
+}
+
+function renderGamepadProps(now, centers) {
     const pose = gamepadPose(now);
     const elapsed = now - gamepadStartAt;
     const enterT = Math.max(0, Math.min(1, elapsed / GAMEPAD_FADE_MS));
@@ -1037,57 +1253,216 @@ function updateProps(now) {
     propHandRight.style.top = rightY + 'px';
     propHandRight.style.width = handW + 'px';
     propHandRight.style.transform = 'translate(-50%, -50%) rotate(' + (pose.rot * move) + 'deg)';
+
+}
+
+function renderHelloProps(now, centers) {
+    const pose = helloPose(now);
+    const restore = helloRestoreProgress(now - helloStartAt);
+    const handW = CHIPS_HAND_W * currentScale;
+    const mid = [
+      (centers[0][0] + centers[1][0]) / 2,
+      (centers[0][1] + centers[1][1]) / 2,
+    ];
+
+    // 左手做动图里的左右挥手，右手保持模型原本手位；两者都使用原爪贴图。
+    propHandLeft.style.opacity = String(1 - restore);
+    propHandLeft.style.left = (centers[0][0] + pose.handX * currentScale) + 'px';
+    const handY = HELLO_HAND_ANCHOR[1] * (1 - restore) + pose.handY;
+    propHandLeft.style.top = (centers[0][1] + handY * currentScale) + 'px';
+    propHandLeft.style.width = handW + 'px';
+    propHandLeft.style.transform = 'translate(-50%, -50%) rotate(' + pose.handRot + 'deg)';
+    propHandRight.style.opacity = String(1 - restore);
+    propHandRight.style.left = centers[1][0] + 'px';
+    propHandRight.style.top = centers[1][1] + 'px';
+    propHandRight.style.width = handW + 'px';
+    propHandRight.style.transform = 'translate(-50%, -50%)';
+
+    propHello.style.left = (mid[0] + HELLO_TEXT_ANCHOR[0] * currentScale) + 'px';
+    propHello.style.top = (mid[1] + (HELLO_TEXT_ANCHOR[1] + pose.textY) * currentScale) + 'px';
+    propHello.style.width = (HELLO_TEXT_W * currentScale) + 'px';
+    propHello.style.transform = 'translate(-50%, -50%) rotate(' + pose.textRot + 'deg)';
+    propHello.style.opacity = String(1 - restore);
+
+}
+
+function renderDroolProps(now, centers) {
+    const elapsed = now - droolStartAt;
+    const nodT = elapsed < DROOL_START_MS
+      ? 0.5 - 0.5 * Math.cos(2 * Math.PI * elapsed / DROOL_NOD_PERIOD_MS)
+      : 0;
+    const bobY = DROOL_NOD_Y * nodT;
+
+    propPigSticker.style.left = (currentCX + DROOL_STICKER_ANCHOR[0] * currentScale) + 'px';
+    propPigSticker.style.top = (currentCY + (DROOL_STICKER_ANCHOR[1] + bobY) * currentScale) + 'px';
+    propPigSticker.style.width = (DROOL_STICKER_W * currentScale) + 'px';
+    propPigSticker.style.transform = 'translate(-50%, -50%)';
+
+    let dropT = Math.max(0, Math.min(1, (elapsed - DROOL_START_MS) / (DROOL_FULL_MS - DROOL_START_MS)));
+    dropT = dropT * dropT * (3 - 2 * dropT);
+    propDrool.style.left = (currentCX + DROOL_ANCHOR[0] * currentScale) + 'px';
+    propDrool.style.top = (currentCY + DROOL_ANCHOR[1] * currentScale) + 'px';
+    propDrool.style.width = (DROOL_W * currentScale) + 'px';
+    propDrool.style.transformOrigin = 'top center';
+    propDrool.style.transform = 'translate(-50%, 0) scaleY(' + (0.12 + 0.88 * dropT) + ')';
+    propDrool.style.opacity = String(dropT);
+
+}
+
+function renderQuestionProps(now, centers) {
+    const elapsed = now - questionStartAt;
+    for (const particle of propQuestions) {
+      const pose = questionParticlePose(particle, elapsed);
+      if (!pose || !particle.el) continue;
+      particle.el.style.left = (currentCX + pose.x * currentScale) + 'px';
+      particle.el.style.top = (currentCY + pose.y * currentScale) + 'px';
+      particle.el.style.width = (QUESTION_W * currentScale * pose.scale) + 'px';
+      particle.el.style.transform = 'translate(-50%, -50%) rotate(' + pose.rot + 'deg)';
+      particle.el.style.opacity = String(pose.opacity);
+    }
+
+}
+
+function renderIdeaProps(now, centers) {
+    const elapsed = now - ideaStartAt;
+    const restore = ideaRestoreProgress(elapsed);
+    const handXModel = ideaHandX(elapsed);
+    const handX = (currentCX + handXModel * currentScale) * (1 - restore) + centers[0][0] * restore;
+    const handY = (currentCY + IDEA_HAND_Y * currentScale) * (1 - restore) + centers[0][1] * restore;
+    propIdeaHand.style.opacity = String(1 - restore);
+    propIdeaHand.style.left = handX + 'px';
+    propIdeaHand.style.top = handY + 'px';
+    propIdeaHand.style.width = (IDEA_HAND_W * currentScale) + 'px';
+    propIdeaHand.style.transform = 'translate(-50%, -50%) rotate(10deg)';
+    propHandLeft.style.opacity = '0';
+    propHandRight.style.opacity = String(1 - restore);
+    propHandRight.style.left = centers[1][0] + 'px';
+    propHandRight.style.top = centers[1][1] + 'px';
+    propHandRight.style.width = (CHIPS_HAND_W * currentScale) + 'px';
+    propHandRight.style.transform = 'translate(-50%, -50%)';
+
+    let bulbT = 0;
+    if (elapsed < IDEA_BULB_FULL_MS) {
+      const t = Math.max(0, Math.min(1, (elapsed - IDEA_BULB_IN_START_MS) / (IDEA_BULB_FULL_MS - IDEA_BULB_IN_START_MS)));
+      bulbT = t * t * (3 - 2 * t);
+    } else if (elapsed < IDEA_BULB_OUT_START_MS) {
+      bulbT = 1;
+    } else {
+      const t = Math.max(0, Math.min(1, (elapsed - IDEA_BULB_OUT_START_MS) / (IDEA_BULB_END_MS - IDEA_BULB_OUT_START_MS)));
+      bulbT = 1 - t * t * (3 - 2 * t);
+    }
+    propLightbulb.style.left = (currentCX + IDEA_BULB_ANCHOR[0] * currentScale) + 'px';
+    propLightbulb.style.top = (currentCY + IDEA_BULB_ANCHOR[1] * currentScale) + 'px';
+    propLightbulb.style.width = (IDEA_BULB_W * currentScale * (0.28 + 0.72 * bulbT)) + 'px';
+    propLightbulb.style.transform = 'translate(-50%, -50%) rotate(-30deg)';
+    propLightbulb.style.opacity = String(bulbT * (1 - restore));
+
+}
+
+function renderThinkingProps(now, centers) {
+    // 思考手势复用“灵光一闪”的横向往返，模型原手由同尺寸贴图接管。
+    // 注意：每个 renderer 自行声明 elapsed；漏掉会在 ticker 回调里抛错，
+    // 异常一旦从 ticker 回调里冒出去，PIXI 的渲染循环就不会再排下一帧，
+    // 表现是「模型卡住不动、但其他功能都正常」，只能重启恢复。
+    const elapsed = now - thinkingStartAt;
+    const handXModel = thinkingHandX(elapsed);
+    propThinkingHand.style.opacity = '1';
+    propThinkingHand.style.left = (currentCX + handXModel * currentScale) + 'px';
+    propThinkingHand.style.top = (currentCY + THINKING_HAND_Y * currentScale) + 'px';
+    propThinkingHand.style.width = (THINKING_HAND_W * currentScale) + 'px';
+    propThinkingHand.style.transform = 'translate(-50%, -50%) rotate(10deg)';
+    propHandLeft.style.opacity = '0';
+    propHandRight.style.opacity = '1';
+    propHandRight.style.left = centers[1][0] + 'px';
+    propHandRight.style.top = centers[1][1] + 'px';
+    propHandRight.style.width = (CHIPS_HAND_W * currentScale) + 'px';
+    propHandRight.style.transform = 'translate(-50%, -50%)';
+
+    propThinkingLoading.style.left = (currentCX + THINKING_LOADING_ANCHOR[0] * currentScale) + 'px';
+    propThinkingLoading.style.top = (currentCY + THINKING_LOADING_ANCHOR[1] * currentScale) + 'px';
+    propThinkingLoading.style.width = (THINKING_LOADING_W * currentScale) + 'px';
+    propThinkingLoading.style.transform = 'translate(-50%, -50%)';
+
+    propDrool.style.left = (currentCX + DROOL_ANCHOR[0] * currentScale) + 'px';
+    propDrool.style.top = (currentCY + DROOL_ANCHOR[1] * currentScale) + 'px';
+    propDrool.style.width = (THINKING_DROOL_W * currentScale) + 'px';
+    propDrool.style.transformOrigin = 'top center';
+    propDrool.style.transform = 'translate(-50%, 0) scaleY(1)';
+    propDrool.style.opacity = '1';
+}
+
+const PROP_RENDERERS = {
+  [CHEER_ACTION]: renderCheerProps,
+  [CHIPS_ACTION]: renderChipsProps,
+  [CHIPS_TWO_ACTION]: renderChipsProps,
+  [PIG_ACTION]: renderPigProps,
+  [GAMEPAD_ACTION]: renderGamepadProps,
+  [HELLO_ACTION]: renderHelloProps,
+  [DROOL_ACTION]: renderDroolProps,
+  [QUESTION_ACTION]: renderQuestionProps,
+  [IDEA_ACTION]: renderIdeaProps,
+  [THINKING_ACTION]: renderThinkingProps,
+};
+
+function updateProps(now) {
+  if (!pawDrawables) return;
+  const active = refreshActivePropAction(now);
+  const activeId = active ? active.id : null;
+  const ballsVisible = activeId === CHEER_ACTION && !!(propLeft && propRight);
+  const helloVisible = activeId === HELLO_ACTION && !!propHello;
+  const droolVisible = activeId === DROOL_ACTION;
+  const questionVisible = activeId === QUESTION_ACTION;
+  const ideaVisible = activeId === IDEA_ACTION;
+  const thinkingVisible = activeId === THINKING_ACTION;
+  const chipsVisible = (activeId === CHIPS_ACTION || activeId === CHIPS_TWO_ACTION) && !!propChips;
+  const pigVisible = activeId === PIG_ACTION && !!propPig;
+  const gamepadVisible = activeId === GAMEPAD_ACTION && !!propGamepad;
+  setPropVisible(propLeft, ballsVisible);
+  setPropVisible(propRight, ballsVisible);
+  setPropVisible(propHello, helloVisible);
+  setPropVisible(propPigSticker, droolVisible);
+  setPropVisible(propDrool, droolVisible || thinkingVisible);
+  setPropVisible(propIdeaHand, ideaVisible);
+  setPropVisible(propLightbulb, ideaVisible);
+  setPropVisible(propThinkingHand, thinkingVisible);
+  setPropVisible(propThinkingLoading, thinkingVisible);
+  for (const particle of propQuestions) {
+    const pose = questionVisible ? questionParticlePose(particle, now - questionStartAt) : null;
+    setPropVisible(particle.el, !!pose);
   }
+  setPropVisible(propChips, chipsVisible);
+  setPropVisible(propChip, chipsVisible);
+  setPropVisible(propPig, pigVisible);
+  setPropVisible(propGamepad, gamepadVisible);
+  const handsVisible = ideaVisible || thinkingVisible || helloVisible || chipsVisible || pigVisible || gamepadVisible;
+  setPropVisible(propHandLeft, handsVisible);
+  setPropVisible(propHandRight, handsVisible);
+
+  if (!ballsVisible && !handsVisible && !droolVisible && !questionVisible && !ideaVisible && !thinkingVisible) return;
+
+  const centers = pawCentersOnScreen();
+  if (!centers) return;
+
+  const renderer = PROP_RENDERERS[activeId];
+  if (renderer) renderer(now, centers);
+
 }
 
-/* ---------------- 站姿 / 坐姿状态机 ---------------- */
-
-/**
- * 进一个状态先维持 STATE_MIN_MS ~ STATE_MAX_MS（随机），这期间不做任何切换；
- * 到点后按 30% 坐下 / 70% 站起 掷一次目标状态：
- *   - 掷到当前状态 → 原地续期，不重复播切换动作
- *   - 掷到另一个状态 → 播对应的切换动作，并更新状态
- * 切换动作是表情通道的 1 秒淡入淡出，和动作曲线互不干扰：切换的时候正在播的待机动作
- * 不会被「打断」，也不用等它播完，普通待机动作也不会反过来改变状态。
- */
-function scheduleStateSwitch() {
-  if (stateTimer) clearTimeout(stateTimer);
-  stateTimer = setTimeout(() => {
-    stateTimer = null;
-    const target = pickNextState();
-    if (target !== currentState) {
-      playAction(target === STATE_SIT ? SIT_ACTION : STAND_ACTION);
-      currentState = target;
+// 开发调试入口：自动化测试或控制台可查询当前动作、动作池，或直接强制播放某个动作。
+window.__daimeowActionDebug = {
+  getState() {
+    const state = actionController.getState();
+    return {
+      ...state,
+      activePropAction: activePropAction ? { id: activePropAction.id, startedAt: activePropAction.startedAt } : null,
+    };
+  },
+  trigger(name, options = {}) {
+    if (name === SIT_ACTION || name === STAND_ACTION) {
+      return actionController.applyState(name === SIT_ACTION ? STATE_SIT : STATE_STAND);
     }
-    scheduleStateSwitch();
-  }, STATE_MIN_MS + Math.random() * (STATE_MAX_MS - STATE_MIN_MS));
-}
-
-/** 按权重掷下一个状态；坐姿不可用时（模型没有坐姿表情）永远站起 */
-function pickNextState() {
-  if (!canSit) return STATE_STAND;
-  return Math.random() < SIT_STATE_WEIGHT ? STATE_SIT : STATE_STAND;
-}
-
-/** 待机：隔一个随机时间随机播一个动作，播完再排下一次 */
-function scheduleIdleAction() {
-  if (idleActionTimer) clearTimeout(idleActionTimer);
-  const delay = IDLE_ACTION_MIN_MS + Math.random() * (IDLE_ACTION_MAX_MS - IDLE_ACTION_MIN_MS);
-  idleActionTimer = setTimeout(() => {
-    idleActionTimer = null;
-    // 窗口没显示时不做无谓的动画；正在播动作时这一轮跳过
-    if (isWindowVisible && live2dModel && !isMotionPlaying()) {
-      playRandomAction('idle', MotionPriority.IDLE);
-    }
-    scheduleIdleAction();
-  }, delay);
-}
-
-/** 点击：立刻回一个动作（优先级最高，可以打断正在播的待机动作） */
-function reactToClick() {
-  const now = Date.now();
-  if (now - lastReactAt < CLICK_REACT_COOLDOWN_MS) return;
-  lastReactAt = now;
-  if (!isWindowVisible || !live2dModel) return;
-  playRandomAction('click', MotionPriority.FORCE);
-}
+    if (!motionByName.has(name)) return false;
+    playAction(name, options.priority ?? MotionPriority.FORCE);
+    return true;
+  },
+};

@@ -1,7 +1,7 @@
 {
   "name": "daimeow",
   "productName": "DaiMeow",
-  "version": "1.2.1",
+  "version": "1.3.0",
   "description": "呆喵 - Monster Hunter Palico Desktop Pet",
   "main": "src/main/index.js",
   "author": "yubdey",
@@ -17,6 +17,7 @@
   "scripts": {
     "start": "electron .",
     "dev": "electron .",
+    "test": "node --no-warnings scripts/action-definitions.test.mjs && node --no-warnings scripts/action-controller.test.mjs",
     "build:pet": "node -e \"require('fs').copyFileSync('node_modules/@hazart-pkg/live2d-core/live2dcubismcore.min.js','src/renderer/pet/live2dcubismcore.js')\" && npx esbuild src/renderer/pet/pet-app-esm.js --bundle --outfile=src/renderer/pet/pet-bundle.js --format=iife --platform=browser --external:electron && node scripts/patch-bundle.js",
     "prestart": "npm run build:pet",
     "predist": "npm run build:pet",
@@ -25,13 +26,12 @@
   "devDependencies": {
     "electron": "^34.0.0",
     "electron-builder": "^26.15.3",
-    "esbuild": "^0.28.1"
-  },
-  "dependencies": {
+    "esbuild": "^0.28.1",
     "@hazart-pkg/live2d-core": "^1.0.1",
     "pixi-live2d-display": "^0.4.0",
     "pixi.js": "^7.4.3"
   },
+  "dependencies": {},
   "build": {
     "appId": "com.yubdey.daimeow",
     "productName": "DaiMeow",
@@ -41,7 +41,8 @@
     },
     "files": [
       "src/**/*",
-      "package.json"
+      "package.json",
+      "!**/*.map"
     ],
     "extraResources": [
       {
@@ -85,6 +86,10 @@
     },
     "portable": {
       "artifactName": "DaiMeow-${version}-Windows-x64-portable.exe"
-    }
+    },
+    "electronLanguages": [
+      "zh-CN",
+      "en-US"
+    ]
   }
 }

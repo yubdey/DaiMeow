@@ -117,7 +117,7 @@ function humanizeApiError(raw) {
   const quota = /FreeTierOnly|AllocationQuota|Arrearage|quota|欠费|余额|free tier/i.test(text + code);
 
   if (quota) {
-    return `服务商额度不足${tag}：请到控制台充值，或关闭「仅使用免费额度」模式；也可以换一个还有额度的视觉模型，或用本地 Ollama 模型`;
+  return `服务商额度不足${tag}：请到控制台充值，或关闭「仅使用免费额度」模式；也可以换一个还有额度的视觉模型`;
   }
   if (status === '401' || /invalid.{0,3}api.{0,3}key|Unauthorized/i.test(text)) {
     return `API Key 无效或已过期${tag}：请在「设置」里重新填写并保存`;
@@ -197,10 +197,6 @@ const cfgModel = document.getElementById('cfgModel');
 const cfgEndpoint = document.getElementById('cfgEndpoint');
 const cfgInterval = document.getElementById('cfgInterval');
 const cfgIntervalVal = document.getElementById('cfgIntervalVal');
-const cfgSceneSample = document.getElementById('cfgSceneSample');
-const cfgProviderType = document.getElementById('cfgProviderType');
-const cfgOllamaEndpoint = document.getElementById('cfgOllamaEndpoint');
-const refreshOllamaBtn = document.getElementById('refreshOllamaBtn');
 function populateModels(provider, currentModel) {
   const container = document.getElementById('cfgModelList');
   const models = PROVIDER_MODELS[provider] || [];
@@ -309,59 +305,6 @@ cfgProvider.addEventListener('change', () => {
   loadApiKeyForProvider(cfgProvider.value);
 });
 
-// --- Provider type toggle ---
-cfgProviderType.addEventListener('change', () => {
-  const isOllama = cfgProviderType.value === 'ollama';
-  document.querySelectorAll('.api-only').forEach(el => el.style.display = isOllama ? 'none' : '');
-  document.querySelectorAll('.ollama-only').forEach(el => el.style.display = isOllama ? '' : 'none');
-  if (isOllama) {
-    refreshOllamaModels();
-  } else {
-    cfgProvider.dispatchEvent(new Event('change'));
-  }
-});
-
-// --- Ollama model loading ---
-async function refreshOllamaModels() {
-  const container = document.getElementById('cfgModelList');
-  const endpoint = cfgOllamaEndpoint.value || 'http://127.0.0.1:11434';
-  container.innerHTML = '<div class="model-empty">正在读取本地模型...</div>';
-
-  try {
-    const models = await api.invoke('ollama:fetch-models', endpoint);
-    if (!models || models.length === 0) {
-      container.innerHTML = '<div class="model-empty">未找到模型，请确认 Ollama 已启动并安装了模型</div>';
-      return;
-    }
-    const currentModel = cfgModel.value;
-    // Auto-select first if none selected
-    if (!models.find(m => m.name === currentModel)) {
-      cfgModel.value = models[0].name;
-    }
-
-    container.innerHTML = models.map(m => `
-      <div class="model-card${m.name === currentModel ? ' selected' : ''}" data-model="${m.name}">
-        <div class="model-radio${m.name === currentModel ? ' checked' : ''}"></div>
-        <div class="model-info">
-          <div class="model-name">${m.name}</div>
-          <div class="model-id">${m.sizeStr || ''}</div>
-        </div>
-        <span class="model-tag" style="color:var(--success);background:rgba(34,197,94,0.1);">本地</span>
-      </div>
-    `).join('');
-
-    // Click to select
-    bindModelCardSelection(container, (card) => {
-      cfgModel.value = card.dataset.model;
-    });
-  } catch (err) {
-    container.innerHTML = `<div class="model-empty">读取失败: ${err.message}</div>`;
-  }
-}
-
-// Refresh button
-refreshOllamaBtn.addEventListener('click', refreshOllamaModels);
-
 cfgInterval.addEventListener('input', () => {
   cfgIntervalVal.textContent = cfgInterval.value + 's';
 });
@@ -401,61 +344,45 @@ async function loadConfigToForm() {
   if (!config) return;
   currentConfig = config;
 
-  // Provider type
-  const isOllama = config.providerType === 'ollama';
-  cfgProviderType.value = isOllama ? 'ollama' : 'api';
   document.getElementById('cfgMaxTokens').value = config.maxTokens || 300;
   document.getElementById('cfgTemperature').value = config.temperature ?? 0.6;
-  cfgEndpoint.value = isOllama ? (config.ollamaEndpoint || 'http://127.0.0.1:11434') : (config.apiEndpoint || '');
-  cfgOllamaEndpoint.value = config.ollamaEndpoint || 'http://127.0.0.1:11434';
+  cfgEndpoint.value = config.apiEndpoint || '';
   cfgInterval.value = config.screenshotInterval || 10;
   cfgIntervalVal.textContent = (config.screenshotInterval || 10) + 's';
-  cfgSceneSample.value = String(config.sceneSampleEvery || 1);
 
-  // Toggle visibility
-  document.querySelectorAll('.api-only').forEach(el => el.style.display = isOllama ? 'none' : '');
-  document.querySelectorAll('.ollama-only').forEach(el => el.style.display = isOllama ? '' : 'none');
-  if (isOllama) {
-    setTimeout(() => refreshOllamaModels(), 300);
-  } else {
-    // 优先用保存的 provider，其次从 endpoint 反推
-    savedProvider = config.provider || 'custom';
-    if (!PROVIDER_ENDPOINTS[savedProvider]) {
-      savedProvider = 'custom';
-      for (const [key, url] of Object.entries(PROVIDER_ENDPOINTS)) {
-        if (url && config.apiEndpoint === url) { savedProvider = key; break; }
-      }
+  // 优先用保存的 provider，其次从 endpoint 反推
+  savedProvider = config.provider || 'custom';
+  if (!PROVIDER_ENDPOINTS[savedProvider]) {
+    savedProvider = 'custom';
+    for (const [key, url] of Object.entries(PROVIDER_ENDPOINTS)) {
+      if (url && config.apiEndpoint === url) { savedProvider = key; break; }
     }
-    cfgProvider.value = savedProvider;
-    populateModels(savedProvider, config.model || '');
-    // 迁移旧版单 key 到当前供应商槽位（避免升级后输入框为空但 key 丢失）
-    if (config.apiKey && (!config.apiKeys || Object.keys(config.apiKeys).length === 0)) {
-      currentConfig.apiKeys = { [savedProvider]: config.apiKey };
-      api.invoke('control:save-config', { apiKeys: currentConfig.apiKeys });
-    }
-    loadApiKeyForProvider(savedProvider);
   }
+  cfgProvider.value = savedProvider;
+  populateModels(savedProvider, config.model || '');
+  // 迁移旧版单 key 到当前供应商槽位（避免升级后输入框为空但 key 丢失）
+  if (config.apiKey && (!config.apiKeys || Object.keys(config.apiKeys).length === 0)) {
+    currentConfig.apiKeys = { [savedProvider]: config.apiKey };
+    api.invoke('control:save-config', { apiKeys: currentConfig.apiKeys });
+  }
+  loadApiKeyForProvider(savedProvider);
 
   // Edit panel
   applyEditPanel(config);
 }
 
 document.getElementById('saveConfigBtn').addEventListener('click', async () => {
-  const isOllama = cfgProviderType.value === 'ollama';
   const provider = cfgProvider.value;
   const apiKeyVal = document.getElementById('cfgApiKey').value;
   // 按供应商分别保存 API Key（合并进 apiKeys 映射）
   const apiKeys = { ...(currentConfig?.apiKeys || {}), [provider]: apiKeyVal };
   const config = {
     provider,
-    providerType: isOllama ? 'ollama' : 'api',
     apiKey: apiKeyVal,
     apiKeys,
-    apiEndpoint: isOllama ? '' : document.getElementById('cfgEndpoint').value,
-    ollamaEndpoint: isOllama ? (cfgOllamaEndpoint.value || 'http://127.0.0.1:11434') : undefined,
+    apiEndpoint: document.getElementById('cfgEndpoint').value,
     model: cfgModel.value,
     screenshotInterval: parseInt(cfgInterval.value),
-    sceneSampleEvery: parseInt(cfgSceneSample.value) || 1,
     maxTokens: parseInt(document.getElementById('cfgMaxTokens').value),
     temperature: parseFloat(document.getElementById('cfgTemperature').value),
   };

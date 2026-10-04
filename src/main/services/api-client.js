@@ -11,7 +11,7 @@ const SCENE_LABELS = { '工作': 'work', '娱乐': 'fun', '其他': 'other' };
 // 允许 [场景:工作] / 【场景：工作】 等写法
 const SCENE_TAG_RE = /[\[【（(]\s*(?:场景)?\s*[:：]\s*(工作|娱乐|其他)\s*[\]】）)]/;
 
-// 每次截图提问的文案（Ollama 与 OpenAI 两条路径共用）
+// 每次截图提问的文案
 const SCREEN_QUESTION = '（你看了一眼屏幕）看到了什么？简单评论一下喵~';
 
 // 单次请求超时。没有超时的话，一个挂住的请求会让截图循环永久卡在 running，
@@ -19,12 +19,11 @@ const SCREEN_QUESTION = '（你看了一眼屏幕）看到了什么？简单评�
 const API_REQUEST_TIMEOUT_MS = 60000;
 
 class ApiClient {
-  constructor(configStore, chatManager, statsTracker, personalityManager, ollamaProvider) {
+  constructor(configStore, chatManager, statsTracker, personalityManager) {
     this.configStore = configStore;
     this.chatManager = chatManager;
     this.statsTracker = statsTracker;
     this.personalityManager = personalityManager;
-    this.ollamaProvider = ollamaProvider;
   }
 
   getSystemPrompt() {
@@ -77,10 +76,6 @@ class ApiClient {
   async sendScreenshot(base64Image, options = {}) {
     const classifyScene = options.classifyScene !== false;
     const config = this.configStore.getAll();
-
-    if (config.providerType === 'ollama') {
-      return this.sendViaOllama(base64Image, config, { classifyScene });
-    }
 
     // 按当前供应商解析 API Key（优先 apiKeys[provider]，旧单 key 兜底）
     const apiKey = config.apiKeys?.[config.provider] || config.apiKey || '';
@@ -183,98 +178,6 @@ class ApiClient {
       }
       // 请求了场景识别但模型没给标签时按"无法识别"计入其他
       return { reply, scene: classifyScene ? (parsed.scene || 'other') : null };
-    }
-    throw lastError;
-    } catch (err) {
-      this.chatManager.removeMessage(storedUserMsg);
-      throw err;
-    }
-  }
-
-  async sendViaOllama(base64Image, config, options = {}) {
-    const classifyScene = options.classifyScene !== false;
-    if (!config.model) {
-      throw new Error('请先在设置中选择 Ollama 模型');
-    }
-
-    // Strip data:image prefix for Ollama (needs raw base64)
-    const rawBase64 = base64Image.replace(/^data:image\/\w+;base64,/, '');
-
-    // Build user message in Ollama format
-    const userMsg = {
-      role: 'user',
-      content: SCREEN_QUESTION,
-      images: [rawBase64],
-    };
-
-    // Store for history display (text-only version)（请求失败时回滚）
-    // hideText：这句提示词只在请求里出现，不在「记录」面板里显示
-    const storedUserMsg = this.chatManager.addMessage(userMsg, { hideText: true });
-
-    // Build message history
-    const allHistory = this._filterHistory();
-    const recentHistory = allHistory.slice(-6).map((m, i, arr) => {
-      // Convert OpenAI-format content (array) to Ollama string
-      let content = m.content;
-      if (Array.isArray(content)) {
-        content = content
-          .filter(c => c.type === 'text')
-          .map(c => c.text)
-          .join(' ')
-          .trim() || '（图片）';
-      }
-      if (m.role === 'assistant' && typeof content === 'string') {
-        content = content.slice(0, 25);
-      }
-      // 只有本轮（最后一条）带图；历史消息只留文字，避免重复上传整张截图
-      const msg = { role: m.role, content };
-      if (m.role === 'user' && m.images && i === arr.length - 1) {
-        msg.images = m.images;
-      }
-      return msg;
-    });
-
-    const messages = ApiClient.attachSceneNote([
-      { role: 'system', content: this.getSystemPrompt() },
-      ...recentHistory,
-    ], classifyScene);
-
-    const endpoint = config.ollamaEndpoint || 'http://127.0.0.1:11434';
-
-    try {
-    let lastError;
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (attempt > 0) {
-        console.warn(`[Ollama] Retry ${attempt} after ${attempt * 3}s...`);
-        await new Promise(r => setTimeout(r, attempt * 3000));
-      }
-
-      try {
-        const data = await this.ollamaProvider.sendChat(endpoint, config.model, messages, {
-          temperature: config.temperature,
-          maxTokens: config.maxTokens,
-        });
-
-        const parsed = ApiClient.extractScene(data.message?.content);
-        let reply = parsed.reply.slice(0, 25);
-
-        if (!reply || reply.trim() === '') {
-          lastError = new Error('Ollama 返回了空内容');
-          if (attempt < 2) continue;
-          throw lastError;
-        }
-
-        this.chatManager.addMessage({ role: 'assistant', content: reply });
-        this.statsTracker.addMessage();
-        const totalTokens = (data.eval_count || 0) + (data.prompt_eval_count || 0);
-        if (totalTokens > 0) {
-          this.statsTracker.addTokens(totalTokens);
-        }
-        return { reply, scene: classifyScene ? (parsed.scene || 'other') : null };
-      } catch (err) {
-        if (attempt < 2 && err.message.includes('空内容')) continue;
-        throw err;
-      }
     }
     throw lastError;
     } catch (err) {

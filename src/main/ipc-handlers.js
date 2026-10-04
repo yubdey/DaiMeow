@@ -27,17 +27,17 @@ function registerIpcHandlers(ctx) {
 
   // Start / Stop
   ipcMain.handle('control:start', async () => {
-    const petWindow = ctx.getPetWindow();
-    if (petWindow && !petWindow.isDestroyed()) {
-      petWindow.show();
-      const config = getConfig();
-      petWindow.webContents.send('pet:passthrough-changed', config.mousePassthrough ?? false);
-      petWindow.webContents.send('pet:fixed-changed', config.fixedPosition ?? false);
-      // 应用置顶设置
-      petWindow.setAlwaysOnTop(config.alwaysOnTop ?? true, 'screen-saver');
-      // 重启时确保鼠标/手柄轮询恢复（stopLoop 已将其停止）
-      ctx.startMousePoller();
-    }
+    const petWindow = await ctx.ensurePetWindow();
+    const config = getConfig();
+
+    petWindow.setAlwaysOnTop(config.alwaysOnTop ?? true, 'screen-saver');
+    petWindow.setIgnoreMouseEvents(config.mousePassthrough ?? false);
+    petWindow.setOpacity(config.petOpacity ?? 1.0);
+    petWindow.show();
+    petWindow.webContents.send('pet:passthrough-changed', config.mousePassthrough ?? false);
+    petWindow.webContents.send('pet:fixed-changed', config.fixedPosition ?? false);
+    // 重启时确保鼠标/手柄轮询恢复（stopLoop 已将其停止）
+    ctx.startMousePoller();
     ctx.startLoop();
     return true;
   });
@@ -77,6 +77,7 @@ function registerIpcHandlers(ctx) {
       }
     }
     ctx.startMousePoller();
+    ctx.markPetReady();
     return true;
   });
 
@@ -108,7 +109,11 @@ function registerIpcHandlers(ctx) {
   // 「调整」面板的滑块和桌宠右键菜单里的「调整大小」都走这一条路径，保证行为一致。
   const applyPetTransform = ({ x, y, scale }) => {
     const petWindow = ctx.getPetWindow();
-    if (!petWindow || petWindow.isDestroyed()) return false;
+    if (!petWindow || petWindow.isDestroyed()) {
+      // 宠物窗口尚未创建时也保存参数，首次启动会按这份配置创建。
+      saveConfig({ petPositionX: x, petPositionY: y, petScale: scale });
+      return true;
+    }
 
     const { width: screenW, height: screenH } = screen.getPrimaryDisplay().bounds;
     const petW = Math.round(PET_BASE_W * scale);
@@ -148,11 +153,6 @@ function registerIpcHandlers(ctx) {
   });
   ipcMain.handle('personality:preview', async (event, id) => {
     return ctx.getPersonalityManager().getPreview(id);
-  });
-
-  // Ollama
-  ipcMain.handle('ollama:fetch-models', async (event, endpoint) => {
-    return ctx.getOllamaProvider().fetchModels(endpoint);
   });
 
   // 固定位置开关（「调整」面板与桌宠右键菜单共用）

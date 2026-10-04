@@ -18,12 +18,12 @@
       <div class="sidebar-nav">
         <button class="tab-btn active" data-tab="main"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg><span>主页</span></button>
         <button class="tab-btn" data-tab="config"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a1.98 1.98 0 0 1 0 2.81 1.98 1.98 0 0 1-2.81 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a1.98 1.98 0 0 1-2.81 0 1.98 1.98 0 0 1 0-2.81l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a1.98 1.98 0 0 1 0-2.81 1.98 1.98 0 0 1 2.81 0l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a1.98 1.98 0 0 1 2.81 0 1.98 1.98 0 0 1 0 2.81l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span>设置</span></button>
-        <button class="tab-btn" data-tab="history"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span>记录</span></button>
         <button class="tab-btn" data-tab="edit"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"/><circle cx="12" cy="12" r="1"/></svg><span>调整</span></button>
         <button class="tab-btn" data-tab="personality"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/><circle cx="12" cy="12" r="2"/></svg><span>人格</span></button>
+        <button class="tab-btn" data-tab="history"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg><span>记录</span></button>
       </div>
       <div class="version-text">
-        <span>v1.2.1</span>
+        <span>v1.3.0</span>
         <button class="info-btn" id="infoBtn" title="使用须知">!</button>
       </div>
     </nav>
@@ -99,13 +99,6 @@
       <div class="panel" id="panel-config">
         <div class="panel-body">
           <div class="form-group">
-            <label>AI 服务类型</label>
-            <select id="cfgProviderType" class="input">
-              <option value="api">API 服务商</option>
-              <option value="ollama">Ollama 本地模型</option>
-            </select>
-          </div>
-          <div class="form-group api-only">
             <label>服务商预设</label>
             <select id="cfgProvider" class="input">
               <option value="custom">自定义</option>
@@ -119,15 +112,11 @@
               <option value="other">其他</option>
             </select>
           </div>
-          <div class="form-group ollama-only" style="display:none;">
-            <label>Ollama 地址</label>
-            <input type="text" id="cfgOllamaEndpoint" placeholder="http://127.0.0.1:11434" class="input">
-          </div>
-          <div class="form-group api-only">
+          <div class="form-group">
             <label>API 地址（OpenAI 兼容接口）</label>
             <input type="text" id="cfgEndpoint" placeholder="https://api.xxx.com/v1/chat/completions" class="input">
           </div>
-          <div class="form-group api-only">
+          <div class="form-group">
             <label>API 密钥（保存在本机并加密）</label>
             <div class="password-wrap">
               <input type="password" id="cfgApiKey" placeholder="sk-..." class="input">
@@ -140,10 +129,6 @@
             <label>视觉模型</label>
             <div class="model-list" id="cfgModelList"></div>
             <input type="hidden" id="cfgModel" value="">
-            <button class="btn-secondary ollama-only" id="refreshOllamaBtn" style="display:none;margin-top:8px;">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
-              刷新模型列表
-            </button>
           </div>
           <div class="form-row">
             <div class="form-group" style="flex:1">
@@ -159,17 +144,6 @@
             <label>截图间隔（秒）</label>
             <input type="range" id="cfgInterval" min="1" max="60" value="5" class="slider">
             <span id="cfgIntervalVal">5s</span>
-          </div>
-          <div class="form-group">
-            <label>场景识别频率</label>
-            <select id="cfgSceneSample" class="input">
-              <option value="1">每张图片都识别</option>
-              <option value="2">每 2 张识别一次</option>
-              <option value="3">每 3 张识别一次</option>
-              <option value="5">每 5 张识别一次</option>
-              <option value="10">每 10 张识别一次</option>
-            </select>
-            <span class="form-hint">场景识别与呆喵台词共用同一次请求，降低频率可减少资源占用</span>
           </div>
           <button class="btn-primary" id="saveConfigBtn">保存配置</button>
         </div>
@@ -273,14 +247,14 @@
       <h2>《呆喵》使用须知</h2>
       <div class="modal-body">
         <ol>
-          <li>本软件需要联网才能使用 AI 对话功能。</li>
-          <li>使用 AI 视觉功能时，截图会发送至您选择的 AI 服务商。</li>
-          <li>不建议在网游运行本程序，有被检测为第三方插件或辅助程序的风险。</li>
-          <li>AI 回复可能存在错误，仅供参考，请勿将其作为专业建议或事实依据。</li>
-          <li>软件运行过程中可能占用一定的系统资源，具体占用情况因设备和使用场景而异。</li>
+          <li>本软件需要联网才能使用AI对话功能。</li>
+          <li>使用AI视觉功能时,截图会发送至您选择的AI服务商。</li>
+          <li>不建议在网游运行本程序,有被检测为第三方插件的风险。</li>
+          <li>AI回复可能存在错误,仅供参考。</li>
+          <li>软件运行过程中可能会占用一定的系统资源。</li>
           <li>使用本软件即视为您已阅读并同意相关协议及使用须知。</li>
         </ol>
-        <p>祝您使用愉快！</p>
+        <p>祝您使用愉快!</p>
         <p class="modal-feedback">反馈渠道:3389402102@qq.com</p>
       </div>
       <button class="btn-primary" id="closeModalBtn" style="align-self:flex-end;">我知道了</button>

@@ -90,6 +90,33 @@
 					"FadeOutTime": 0.36
 				}
 			],
+			"Greeting": [
+				{
+					"File": "motions/hello.motion3.json",
+					"FadeInTime": 0.18,
+					"FadeOutTime": 0.25
+				},
+				{
+					"File": "motions/drool.motion3.json",
+					"FadeInTime": 0.18,
+					"FadeOutTime": 0.25
+				},
+				{
+					"File": "motions/question.motion3.json",
+					"FadeInTime": 0.02,
+					"FadeOutTime": 0.2
+				},
+				{
+					"File": "motions/idea.motion3.json",
+					"FadeInTime": 0.12,
+					"FadeOutTime": 0.2
+				},
+				{
+					"File": "motions/thinking.motion3.json",
+					"FadeInTime": 0.12,
+					"FadeOutTime": 0.2
+				}
+			],
 			"Food": [
 				{
 					"File": "motions/eat_chips.motion3.json",

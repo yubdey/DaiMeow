@@ -70,10 +70,6 @@ class ChatManager {
   }
 
   extractImageContent(msg) {
-    // Ollama format: images array on the message object
-    if (msg.images && Array.isArray(msg.images) && msg.images.length > 0) {
-      return 'data:image/jpeg;base64,' + msg.images[0];
-    }
     // OpenAI format: image_url inside content array
     const content = msg.content;
     if (Array.isArray(content)) {
