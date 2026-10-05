@@ -48,7 +48,30 @@ let petWindowReadyResolve = null;
 let petWindowReadyReject = null;
 let petMoveSaveTimer = null;
 
+// ── 单实例保护 ────────────────────────────────────────────────────────────
+// 重复双击 start.bat（或反复点快捷方式）会拉起多个完整实例：出现多个控制面板、
+// 多个托盘图标；更麻烦的是两边都能各自跑截图循环（API 消耗翻倍），
+// 而且会并发写同一份 config / totals / life-tags（后写的覆盖先写的）。
+// 所以第二个实例直接退出，并把已有实例的控制面板叫回前台。
+// 锁按 userData 目录隔离：带 --user-data-dir 的测试实例不受影响，可以并存。
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (controlWindow && !controlWindow.isDestroyed()) {
+      if (controlWindow.isMinimized()) controlWindow.restore();
+      if (!controlWindow.isVisible()) controlWindow.show();
+      controlWindow.focus();
+    }
+  });
+}
+
 app.whenReady().then(async () => {
+  // 没抢到锁的实例上面已经 quit 了，这里不再初始化任何东西
+  // （否则它会照样建窗口、起截图循环，等于没拦）
+  if (!gotSingleInstanceLock) return;
+
   console.log('[DaiMeow] App ready');
 
   // Start local HTTP server for model files

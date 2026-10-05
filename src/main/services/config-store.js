@@ -12,7 +12,8 @@ const DEFAULTS = {
   apiEndpoint: 'https://api.moonshot.cn/v1/chat/completions',
   model: '',
   screenshotInterval: 15,
-  maxTokens: 300,
+  // 桌宠渲染的最大帧率（30~120），跟设置面板的「最大帧率」对应
+  maxFps: 45,
   temperature: 0.6,
   petScale: 0.5,
   petPositionX: 0,
@@ -102,10 +103,15 @@ function load() {
       delete config.ollamaEndpoint;
     }
 
+    // 旧版 Max Tokens 已移除，改由程序内部固定预算并自动重试；清掉旧字段，
+    // 避免配置文件继续保留一个已经没有任何作用的设置。
+    const needsMaxTokensMigration = Object.prototype.hasOwnProperty.call(saved, 'maxTokens');
+    if (needsMaxTokensMigration) delete config.maxTokens;
+
     // 旧版的明文配置：能加密就立刻落盘迁移，避免明文长期留在磁盘上
     const needsSecretMigration = encryptionAvailable()
       && (isPlainSecret(saved.apiKey) || Object.values(saved.apiKeys || {}).some(isPlainSecret));
-    if (needsOllamaMigration || needsSecretMigration) {
+    if (needsOllamaMigration || needsMaxTokensMigration || needsSecretMigration) {
       // 迁移只是"顺手做的好事"，写盘失败绝不能影响已经读进来的配置
       try {
         persist();

@@ -20,6 +20,13 @@ function registerIpcHandlers(ctx) {
     // 运行中改「截图间隔」要立刻生效：间隔是启动时读进定时器的，不重排就得停了再启动。
     // 其它字段（服务商、Key、模型等）本来每次请求都会重新读配置，不需要额外处理。
     if (partial && partial.screenshotInterval !== undefined) ctx.applyScreenshotInterval();
+    // 「最大帧率」同理：立刻下发给桌宠页面，不用重启
+    if (partial && partial.maxFps !== undefined) {
+      const petWindow = ctx.getPetWindow();
+      if (petWindow && !petWindow.isDestroyed()) {
+        petWindow.webContents.send('pet:max-fps', partial.maxFps);
+      }
+    }
     return getConfig();
   });
 
@@ -39,6 +46,7 @@ function registerIpcHandlers(ctx) {
     petWindow.show();
     petWindow.webContents.send('pet:passthrough-changed', config.mousePassthrough ?? false);
     petWindow.webContents.send('pet:fixed-changed', config.fixedPosition ?? false);
+    petWindow.webContents.send('pet:max-fps', config.maxFps ?? 45);
     // 重启时确保鼠标/手柄轮询恢复（stopLoop 已将其停止）
     ctx.startMousePoller();
     ctx.startLoop();
@@ -72,6 +80,7 @@ function registerIpcHandlers(ctx) {
       // 避免渲染层持有默认值导致拖动区域与配置不一致。
       petWindow.webContents.send('pet:passthrough-changed', config.mousePassthrough ?? false);
       petWindow.webContents.send('pet:fixed-changed', config.fixedPosition ?? false);
+      petWindow.webContents.send('pet:max-fps', config.maxFps ?? 45);
       // 页面按"隐藏"初始化，这里同步一次真实可见性
       petWindow.webContents.send('pet:visibility-changed', petWindow.isVisible());
       // 手柄探测：页面可能在 control:start 之后才加载完，这里补发一次（仅当开关打开且循环在跑）

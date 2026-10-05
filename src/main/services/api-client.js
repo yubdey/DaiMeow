@@ -17,6 +17,10 @@ const SCREEN_QUESTION = '（你看了一眼屏幕）看到了什么？简单评�
 // 单次请求超时。没有超时的话，一个挂住的请求会让截图循环永久卡在 running，
 // 界面既不报错也不再发新请求。超时后按普通失败处理（回滚消息 + 上报错误）。
 const API_REQUEST_TIMEOUT_MS = 60000;
+// 单次回复的最大输出 token。以前这是设置面板里的一项，但对用户来说太专业、
+// 也不知道该填多少，所以改成内部固定值：正常台词只需 30~50 个输出 token，
+// 300 留了 6 倍余量；被截断时下面的重试逻辑还会自动翻倍，够用且不用操心。
+const MAX_OUTPUT_TOKENS = 300;
 
 class ApiClient {
   constructor(configStore, chatManager, statsTracker, personalityManager) {
@@ -157,9 +161,9 @@ class ApiClient {
     // 各家的参数名并不一致，传错字段会被严格校验的服务商以 400 拒绝 ——
     // 所以只对能确认字段的服务商下发，其余宁可不发（多思考 << 整条请求失败）。
     let thinkingParams = ApiClient.buildThinkingParams(config.apiEndpoint, config.model);
-    // 预算上限与服务商常见上限、面板输入框上限一致
+    // 截断重试的预算上限（300 → 600 → 1200… 最多到这里），与主流服务商输出上限对齐
     const MAX_TOKENS_LIMIT = 4096;
-    let maxTokens = Math.min(Number(config.maxTokens) || 300, MAX_TOKENS_LIMIT);
+    let maxTokens = Math.min(MAX_OUTPUT_TOKENS, MAX_TOKENS_LIMIT);
 
     try {
     let lastError;
@@ -222,7 +226,7 @@ class ApiClient {
 
       if (!reply || reply.trim() === '') {
         lastError = truncated
-          ? new Error(`回复被 Max Tokens 截断：${config.maxTokens} tokens 不够用（思考模式会先占用预算），请在「设置」里把 Max Tokens 调大`)
+          ? new Error(`回复被截断：${MAX_OUTPUT_TOKENS} tokens 不够用（思考型模型会先占用预算），建议换一个不强制思考的模型`)
           : new Error('AI 返回了空内容，请重试');
         if (attempt < 2) continue; // retry on empty
         throw lastError;

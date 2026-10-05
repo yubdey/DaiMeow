@@ -309,6 +309,9 @@ cfgInterval.addEventListener('input', () => {
   cfgIntervalVal.textContent = cfgInterval.value + 's';
 });
 
+const cfgMaxFps = document.getElementById('cfgMaxFps');
+const cfgTemperature = document.getElementById('cfgTemperature');
+
 let savedProvider = 'custom';
 let currentConfig = null;
 
@@ -344,8 +347,8 @@ async function loadConfigToForm() {
   if (!config) return;
   currentConfig = config;
 
-  document.getElementById('cfgMaxTokens').value = config.maxTokens || 300;
-  document.getElementById('cfgTemperature').value = config.temperature ?? 0.6;
+  cfgMaxFps.value = config.maxFps || 45;
+  cfgTemperature.value = config.temperature ?? 0.6;
   cfgEndpoint.value = config.apiEndpoint || '';
   cfgInterval.value = config.screenshotInterval || 15;
   // 标签取滑块的实际值（滑块会把越界的历史配置夹到 min/max）：
@@ -378,6 +381,15 @@ document.getElementById('saveConfigBtn').addEventListener('click', async () => {
   const apiKeyVal = document.getElementById('cfgApiKey').value;
   // 按供应商分别保存 API Key（合并进 apiKeys 映射）
   const apiKeys = { ...(currentConfig?.apiKeys || {}), [provider]: apiKeyVal };
+  // 手填的数字不受 min/max 约束，先夹到合法范围再回填输入框，
+  // 否则会出现"框里写着 500、实际按 120 跑"的不一致（与截图间隔滑块同理）
+  const maxFps = Math.min(120, Math.max(30, parseInt(cfgMaxFps.value) || 45));
+  cfgMaxFps.value = maxFps;
+  // Temperature 同理：夹到 0~2，留空 / 填了非数字回落 0.6。
+  // 注意不能用 `|| 0.6` 兜底 —— 0 是合法温度，会被当成假值顶掉
+  const rawTemperature = parseFloat(cfgTemperature.value);
+  const temperature = Number.isFinite(rawTemperature) ? Math.min(2, Math.max(0, rawTemperature)) : 0.6;
+  cfgTemperature.value = temperature;
   const config = {
     provider,
     apiKey: apiKeyVal,
@@ -385,8 +397,8 @@ document.getElementById('saveConfigBtn').addEventListener('click', async () => {
     apiEndpoint: document.getElementById('cfgEndpoint').value,
     model: cfgModel.value,
     screenshotInterval: parseInt(cfgInterval.value),
-    maxTokens: parseInt(document.getElementById('cfgMaxTokens').value),
-    temperature: parseFloat(document.getElementById('cfgTemperature').value),
+    maxFps,
+    temperature,
   };
   await api.invoke('control:save-config', config);
   currentConfig = config;

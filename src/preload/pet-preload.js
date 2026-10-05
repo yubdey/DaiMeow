@@ -42,6 +42,10 @@ contextBridge.exposeInMainWorld('petAPI', {
   onFixedChanged: (callback) => {
     ipcRenderer.on('pet:fixed-changed', (event, enabled) => callback(enabled));
   },
+  // 「最大帧率」变更（设置面板保存后由主进程下发）
+  onMaxFpsChanged: (callback) => {
+    ipcRenderer.on('pet:max-fps', (event, fps) => callback(fps));
+  },
   // 窗口显示/隐藏（主进程在 show/hide 时下发；页面初始按隐藏处理）
   onVisibilityChanged: (callback) => {
     ipcRenderer.on('pet:visibility-changed', (event, visible) => callback(visible));

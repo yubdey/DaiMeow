@@ -17,13 +17,24 @@ const app = new PIXI.Application({
 });
 
 Live2DModel.registerTicker(PIXI.Ticker);
-// 画面（模型内容）帧率上限。拖动顺滑与否取决于「窗口位置的更新节拍」，
-// 那部分已交给渲染进程的 rAF（见下面拖动那段），所以这里维持在 45 帧省资源。
-app.ticker.maxFPS = 45;
-// 模型（含物理）的更新频率也压到同一档：pixi-live2d-display 把模型更新挂在
-// PIXI.Ticker.shared 上，那个默认不限帧，在高刷屏上会按屏幕刷新率空转（本机 165Hz）。
-// 模型更新用的是 deltaMS，所以限帧只是少算几次、动画速度不变。
-PIXI.Ticker.shared.maxFPS = 45;
+// 帧率上限（30~120，默认 45），由设置面板的「最大帧率」控制，改完立即生效。
+// 两个 ticker 都要限：
+//  - app.ticker 负责画面（模型内容）刷新；拖动顺不顺取决于窗口位置的更新节拍，
+//    那部分交给渲染进程的 rAF（见下面拖动那段），所以这里限帧只影响模型自身的流畅度。
+//  - PIXI.Ticker.shared 挂着 pixi-live2d-display 的模型更新（含物理），它默认不限帧，
+//    在高刷屏上会按屏幕刷新率空转（本机 165Hz）。模型更新用的是 deltaMS，
+//    所以限帧只是少算几次，动画速度不变。
+const MIN_FPS = 30;
+const MAX_FPS = 120;
+const DEFAULT_FPS = 45;
+function applyMaxFps(fps) {
+  const v = Math.min(MAX_FPS, Math.max(MIN_FPS, Math.round(Number(fps) || DEFAULT_FPS)));
+  app.ticker.maxFPS = v;
+  PIXI.Ticker.shared.maxFPS = v;
+  return v;
+}
+applyMaxFps(DEFAULT_FPS);
+petAPI.onMaxFpsChanged((fps) => applyMaxFps(fps));
 
 // 摘掉 PIXI 注册在 document / canvas 上的指针事件监听。
 // 原因：pixi-live2d-display 依赖 @pixi/display@6，而应用用的是 pixi.js 7 —— 两套 PIXI 并存。
@@ -208,7 +219,7 @@ const CLICK_ACTION_NAMES = getActionIdsForPool(ACTION_POOL_KEYS.CLICK_STAND);
 
 // 待机动作的随机间隔（毫秒）
 const IDLE_ACTION_MIN_MS = 5000;
-const IDLE_ACTION_MAX_MS = 15000;
+const IDLE_ACTION_MAX_MS = 20000;
 // 连点保护：两次点击回应至少隔这么久
 const CLICK_REACT_COOLDOWN_MS = 350;
 
