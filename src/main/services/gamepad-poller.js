@@ -23,13 +23,23 @@ public class XI {
 "@
 $state = New-Object XINPUT_STATE
 while ($true) {
-    $r = [XI]::XInputGetState(0, [ref]$state)
-    if ($r -eq 0) {
-        $rx = $state.Gamepad.sThumbRX / 32767.0
-        $ry = $state.Gamepad.sThumbRY / 32767.0
-        Write-Host "$rx $ry"
-    } else {
-        Write-Host "none"
+    $found = $false
+    for ($i = 0; $i -lt 4; $i++) {
+        $r = [XI]::XInputGetState($i, [ref]$state)
+        if ($r -eq 0) {
+            $rx = $state.Gamepad.sThumbRX / 32767.0
+            $ry = $state.Gamepad.sThumbRY / 32767.0
+            $rxText = $rx.ToString([System.Globalization.CultureInfo]::InvariantCulture)
+            $ryText = $ry.ToString([System.Globalization.CultureInfo]::InvariantCulture)
+            [Console]::Out.WriteLine("$rxText $ryText")
+            [Console]::Out.Flush()
+            $found = $true
+            break
+        }
+    }
+    if (-not $found) {
+        [Console]::Out.WriteLine("none")
+        [Console]::Out.Flush()
     }
     Start-Sleep -Milliseconds 50
 }

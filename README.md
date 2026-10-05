@@ -4,7 +4,7 @@
 
 [![Build](https://github.com/yubdey/DaiMeow/actions/workflows/build.yml/badge.svg)](https://github.com/yubdey/DaiMeow/actions/workflows/build.yml)
 [![Release](https://github.com/yubdey/DaiMeow/actions/workflows/build-release.yml/badge.svg)](https://github.com/yubdey/DaiMeow/actions/workflows/build-release.yml)
-[![Version](https://img.shields.io/badge/version-1.5.0-blue)](https://github.com/yubdey/DaiMeow/releases)
+[![Version](https://img.shields.io/badge/version-1.5.1-blue)](https://github.com/yubdey/DaiMeow/releases)
 
 # 呆喵 DaiMeow
 
@@ -22,7 +22,7 @@
 - **AI 屏幕观察**：定时截图（默认每 15 秒）→ 多模态大模型 → 呆喵用 1~2 句简短台词评论屏幕内容
 - **头像视线追踪**：呆喵的头和眼睛会跟随鼠标移动
 - **随机待机动作 + 点击互动**：隔 5~20 秒随机做一个动作，用鼠标点一下呆喵也会立刻随机回一个动作。呆喵另有「站起 / 坐下」两个持续状态：进入后至少保持 60 秒（最长 120 秒），到期按 70% 站起 / 30% 坐下 重新判定；站起时全部 21 个动作都能做（含抱小猪、玩游戏、Hello、流口水、问号、灵光一闪、思考中、吃一片薯片和吃两片薯片），坐下时做适合坐姿的 17 个动作（点头 / 摇头 / 看左 / 看右 / 抬头 / 低头 / 耳朵抖动 ×2 / 抱小猪 / 玩游戏 / Hello / 流口水 / 问号 / 灵光一闪 / 思考中 / 吃一片薯片 / 吃两片薯片）
-- **手柄右摇杆控制视角**：通过 Windows XInput 读取手柄，右摇杆控制呆喵视线方向（后台窗口也能用）
+- **手柄右摇杆控制视角**：优先通过 Windows XInput 读取手柄，并用 Chromium Gamepad API 兼容其他常见手柄；右摇杆控制呆喵视线方向（后台窗口也能用）
 - **多服务商支持**：DeepSeek、Moonshot (Kimi)、小米 MiMo、阿里云百炼、智谱 AI、火山方舟、硅基流动
 - **人格系统**：6 种可切换人格（元气随从喵 / 温柔陪伴喵 / 傲娇吐槽喵 / 专业猎人喵 / 慵懒摸鱼喵 / 守护骑士喵），每人格有独立完整的 system prompt
 - **生活词条**：长期使用习惯自动解锁的词条（夜喵子 / 早鸟 / 家里蹲 / 工作狂 / "玩"家 / 摸鱼大师）。时段类词条按夜间（19:00～03:00）和早间（03:00～09:00）的使用占比判定；场景类词条在生成台词的**同一次多模态请求**中顺带识别屏幕场景（工作 / 娱乐 / 其他），不额外消耗图片 Token；使用满 14 天后按场景占比评定等级
@@ -111,7 +111,7 @@
 | 打包工具 | [esbuild](https://esbuild.github.io/)（打包宠物窗口渲染器） |
 | 前端 | 原生 HTML / CSS / JavaScript（无框架） |
 | 网络请求 | Node.js 内置 `fetch` |
-| 手柄输入 | Windows XInput（通过 PowerShell 调用） |
+| 手柄输入 | Windows XInput（通过 PowerShell 调用） + Chromium Gamepad API 兼容回退 |
 
 ---
 
@@ -292,7 +292,7 @@ A：这是服务商账户余额 / 免费额度用完了（常见于阿里云百�
 A：呆喵会在请求里**尽量关闭模型的思考模式**（火山方舟、智谱、Moonshot、DeepSeek 用 `thinking.type=disabled`，硅基流动用 `enable_thinking=false`；智谱 GLM-5.3 系列官方不允许关闭、阿里云百炼的视觉模型默认即关闭，所以这几处不下发该参数）。如果仍提示被截断，说明该模型把输出预算用在思考上了——单次回复的输出上限固定为 300 token（对「一句话、25 字以内」的台词有 6 倍余量），被截断时程序会自动用**两倍预算重试**（最多 4096），仍不够就建议换一个不强制思考的视觉模型。
 
 **Q：手柄怎么控制呆喵？**
-A：先在配置文件 `%APPDATA%/daimeow/config.json` 里把 `"gamepadEnabled"` 改成 `true`（**默认是 false**），然后插入支持 XInput 的手柄、点「呆喵？启动！」即可用右摇杆控制呆喵视线方向，无需切换窗口焦点。
+A：先在配置文件 `%APPDATA%/daimeow/config.json` 里把 `"gamepadEnabled"` 改成 `true`（**默认是 false**），然后插入手柄、点「呆喵？启动！」即可用右摇杆控制呆喵视线方向，无需切换窗口焦点。支持 XInput 手柄，以及 Chromium 能识别并提供标准右摇杆轴的其他手柄；无法识别的非 XInput 手柄可通过 Steam Input 映射成 Xbox 控制器。
 
 手柄支持默认关闭的原因：读取 XInput 需要一个常驻的 PowerShell 进程（约占 75MB 内存）。开启后程序会先用浏览器自带的 Gamepad API 探测有没有真手柄，探到了才会启动那个进程；没插手柄就不会创建它。
 

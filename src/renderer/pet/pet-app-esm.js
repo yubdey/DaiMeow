@@ -439,22 +439,38 @@ petAPI.onMousePosition((pos) => {
   targetX = pos.relX;
   targetY = -pos.relY;
 });
-petAPI.onGamepadPosition((pos) => {
-  targetX = pos.relX;
-  targetY = pos.relY;
+const GAMEPAD_DEADZONE = 0.15;
+
+function applyGamepadPosition(relX, relY) {
+  targetX = relX;
+  targetY = relY;
   gamepadTimeout = Date.now() + 500;
+}
+
+petAPI.onGamepadPosition((pos) => {
+  applyGamepadPosition(pos.relX, pos.relY);
 });
 
 // --- 手柄探测（手柄支持默认关闭，主进程开关打开且已启动时才会下发探测）---
 // 用 Chromium 自带的 Gamepad API 判断有没有插手柄：浏览器原生枚举设备，不需要额外进程。
 // 只有真的探到手柄，主进程才会去起 XInput 轮询（那个轮询是常驻 PowerShell）。
 let gamepadProbeTimer = null;
+let gamepadInputTimer = null;
 let gamepadFound = false;
+let browserGamepadActive = false;
+
+function getGamepads() {
+  return navigator.getGamepads ? navigator.getGamepads() : null;
+}
+
+function findConnectedGamepad() {
+  const pads = getGamepads();
+  return pads ? Array.prototype.find.call(pads, (p) => p && p.connected) || null : null;
+}
 
 function probeGamepads() {
   try {
-    const pads = navigator.getGamepads ? navigator.getGamepads() : null;
-    const has = !!pads && Array.prototype.some.call(pads, (p) => p && p.connected);
+    const has = !!findConnectedGamepad();
     if (has !== gamepadFound) {
       gamepadFound = has;
       petAPI.reportGamepadPresence(has);
@@ -464,17 +480,52 @@ function probeGamepads() {
   }
 }
 
+// XInput 轮询偶尔无法覆盖非 Xbox 手柄；Chromium 能识别时直接读取标准右摇杆 axes[2]/[3]。
+// 只在浏览器手柄确实有输入时接管，避免窗口失焦后浏览器返回零值覆盖 XInput。
+function pollBrowserGamepad() {
+  try {
+    const pad = findConnectedGamepad();
+    if (!pad || !pad.axes || pad.axes.length < 4) {
+      if (browserGamepadActive) {
+        browserGamepadActive = false;
+        applyGamepadPosition(0, 0);
+      }
+      return;
+    }
+
+    const rx = Number(pad.axes[2]) || 0;
+    const ry = Number(pad.axes[3]) || 0;
+    const hasInput = Math.abs(rx) > GAMEPAD_DEADZONE || Math.abs(ry) > GAMEPAD_DEADZONE;
+    if (hasInput) {
+      browserGamepadActive = true;
+      // Gamepad API 的 Y 轴向下为正，转成 Live2D 的向上为正。
+      applyGamepadPosition(rx, -ry);
+    } else if (browserGamepadActive) {
+      browserGamepadActive = false;
+      applyGamepadPosition(0, 0);
+    }
+  } catch (err) {
+    // 浏览器手柄读取失败时保留 XInput 路径
+  }
+}
+
 petAPI.onGamepadProbe((enabled) => {
   if (gamepadProbeTimer) {
     clearInterval(gamepadProbeTimer);
     gamepadProbeTimer = null;
   }
+  if (gamepadInputTimer) {
+    clearInterval(gamepadInputTimer);
+    gamepadInputTimer = null;
+  }
   if (!enabled) {
     gamepadFound = false;
+    browserGamepadActive = false;
     return;
   }
   probeGamepads();  // 先立刻探一次，别等 2 秒
   gamepadProbeTimer = setInterval(probeGamepads, 2000);
+  gamepadInputTimer = setInterval(pollBrowserGamepad, 50);
 });
 
 // 气泡每行显示的字数
