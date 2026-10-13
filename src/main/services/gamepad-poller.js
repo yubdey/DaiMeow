@@ -1,8 +1,7 @@
 const { spawn, execSync } = require('child_process');
 
-// PowerShell script that polls XInput right stick in a loop
-const PS_SCRIPT = `
-Add-Type -TypeDefinition @"
+// XInput 的 P/Invoke 声明。常驻轮询和一次性探测共用同一份，避免两处各写一遍 C#。
+const XINPUT_DECL = `Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
 [StructLayout(LayoutKind.Sequential)]
@@ -21,6 +20,20 @@ public class XI {
     public static extern int XInputGetState(int i, ref XINPUT_STATE s);
 }
 "@
+`;
+
+// 一次性探测：查一遍 4 个槽位就退出，不常驻。启动时用它决定要不要起常驻轮询。
+// 这一步不能交给渲染层的 Chromium Gamepad API —— 见 GamepadPoller.probeOnce 的说明。
+const PS_PROBE_ONCE = `${XINPUT_DECL}
+$state = New-Object XINPUT_STATE
+for ($i = 0; $i -lt 4; $i++) {
+    if ([XI]::XInputGetState($i, [ref]$state) -eq 0) { [Console]::Out.WriteLine('found'); exit }
+}
+[Console]::Out.WriteLine('none')
+`;
+
+// PowerShell script that polls XInput right stick in a loop
+const PS_SCRIPT = `${XINPUT_DECL}
 $state = New-Object XINPUT_STATE
 while ($true) {
     $found = $false
@@ -50,6 +63,49 @@ class GamepadPoller {
     this.petWindow = petWindow;
     this.proc = null;
     this.running = false;
+  }
+
+  /**
+   * 一次性探测：现在有没有能被 XInput 读到的手柄（查完就退出，不常驻）。
+   *
+   * 为什么不用渲染层的 Chromium Gamepad API 判断：实测（Windows + XInput 手柄）
+   * 「启动程序前就已经插好」的手柄不会出现在 navigator.getGamepads() 里，永远是
+   * [null,null,null,null] —— 哪怕用户在桌宠窗口上点过、userActivation.hasBeenActive
+   * 已经是 true，也照样看不到；只有拔掉再插一次、产生「设备到达」事件之后，
+   * Chromium 才会把它枚举出来。XInput 读的是驱动，没有这个限制。
+   *
+   * 超时 / 出错一律按「没有手柄」处理：宁可少起一个常驻进程，也不要卡住启动流程。
+   */
+  static probeOnce(timeoutMs = 5000) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (value) => { if (!settled) { settled = true; resolve(value); } };
+      let proc;
+      try {
+        proc = spawn('powershell', ['-NoProfile', '-NonInteractive', '-Command', PS_PROBE_ONCE], {
+          stdio: ['ignore', 'pipe', 'ignore'],
+          windowsHide: true,
+        });
+      } catch (err) {
+        finish(false);
+        return;
+      }
+      let out = '';
+      const timer = setTimeout(() => {
+        try { proc.kill(); } catch { /* 可能已退出 */ }
+        finish(false);
+      }, timeoutMs);
+      proc.stdout.on('data', (chunk) => {
+        out += chunk.toString();
+        if (out.includes('found')) {
+          clearTimeout(timer);
+          try { proc.kill(); } catch { /* 可能已退出 */ }
+          finish(true);
+        }
+      });
+      proc.on('error', () => { clearTimeout(timer); finish(false); });
+      proc.on('exit', () => { clearTimeout(timer); finish(out.includes('found')); });
+    });
   }
 
   start() {

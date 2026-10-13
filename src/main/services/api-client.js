@@ -19,8 +19,53 @@ const SCREEN_QUESTION = '（你看了一眼屏幕）看到了什么？简单评�
 const API_REQUEST_TIMEOUT_MS = 60000;
 // 单次回复的最大输出 token。以前这是设置面板里的一项，但对用户来说太专业、
 // 也不知道该填多少，所以改成内部固定值：正常台词只需 30~50 个输出 token，
-// 300 留了 6 倍余量；被截断时下面的重试逻辑还会自动翻倍，够用且不用操心。
+// 300 留了 6 倍余量；被截断时下面的重试逻辑会提高预算，最多尝试 3 次。
 const MAX_OUTPUT_TOKENS = 300;
+const MAX_TOKEN_ATTEMPTS = 3;
+const MAX_TOKENS_LIMIT = MAX_OUTPUT_TOKENS * MAX_TOKEN_ATTEMPTS;
+
+function createAbortError() {
+  const error = new Error('请求已取消');
+  error.name = 'AbortError';
+  return error;
+}
+
+function waitForRetry(ms, signal) {
+  if (signal?.aborted) return Promise.reject(createAbortError());
+  return new Promise((resolve, reject) => {
+    let timer = null;
+    const onAbort = () => {
+      if (timer) clearTimeout(timer);
+      signal?.removeEventListener('abort', onAbort);
+      reject(createAbortError());
+    };
+    timer = setTimeout(() => {
+      signal?.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+    signal?.addEventListener('abort', onAbort, { once: true });
+  });
+}
+
+function createRequestSignal(externalSignal) {
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  const timeout = setTimeout(
+    () => controller.abort(new DOMException('请求超时', 'TimeoutError')),
+    API_REQUEST_TIMEOUT_MS
+  );
+  if (externalSignal) {
+    if (externalSignal.aborted) controller.abort();
+    else externalSignal.addEventListener('abort', onAbort, { once: true });
+  }
+  return {
+    signal: controller.signal,
+    cleanup() {
+      clearTimeout(timeout);
+      externalSignal?.removeEventListener('abort', onAbort);
+    },
+  };
+}
 
 class ApiClient {
   constructor(configStore, chatManager, statsTracker, personalityManager) {
@@ -109,8 +154,12 @@ class ApiClient {
   }
 
   async sendScreenshot(base64Image, options = {}) {
+    const signal = options.signal;
     const classifyScene = options.classifyScene !== false;
     const config = this.configStore.getAll();
+
+    // 用户停止后不要继续创建消息或发起新请求。
+    if (signal?.aborted) throw createAbortError();
 
     // 按当前供应商解析 API Key（优先 apiKeys[provider]，旧单 key 兜底）
     const apiKey = config.apiKeys?.[config.provider] || config.apiKey || '';
@@ -161,89 +210,107 @@ class ApiClient {
     // 各家的参数名并不一致，传错字段会被严格校验的服务商以 400 拒绝 ——
     // 所以只对能确认字段的服务商下发，其余宁可不发（多思考 << 整条请求失败）。
     let thinkingParams = ApiClient.buildThinkingParams(config.apiEndpoint, config.model);
-    // 截断重试的预算上限（300 → 600 → 1200… 最多到这里），与主流服务商输出上限对齐
-    const MAX_TOKENS_LIMIT = 4096;
-    let maxTokens = Math.min(MAX_OUTPUT_TOKENS, MAX_TOKENS_LIMIT);
+    let thinkingFallbackUsed = false;
+    let truncationLevel = 0;
 
     try {
-    let lastError;
-    let truncatedFallback = '';   // 被截断但至少有内容的回复，作为最后兜底
-    for (let attempt = 0; attempt < 3; attempt++) {
-      if (attempt > 0) {
-        console.warn(`[API] Retry ${attempt} after ${attempt * 3}s...`);
-        await new Promise(r => setTimeout(r, attempt * 3000));
-      }
-
-      const requestBody = {
-        model: config.model,
-        messages,
-        max_tokens: maxTokens,
-        temperature: config.temperature,
-        ...(thinkingParams || {}),
-      };
-      const response = await fetch(config.apiEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify(requestBody),
-        signal: AbortSignal.timeout(API_REQUEST_TIMEOUT_MS),
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.text();
-        lastError = new Error(`API 请求失败 (${response.status}): ${errorBody}`);
-        // 有些服务商/models 不接受「关闭思考」这个字段（比如智谱 GLM-5.3 传 disabled 会直接报错）：
-        // 一旦因此 400，就摘掉该字段重试一次，保证任何模型都还能用。
-        if (response.status === 400 && thinkingParams) {
-          console.warn('[API] 400 可能是「关闭思考」参数不被接受，去掉该参数重试');
-          thinkingParams = null;
-          continue;
+      let lastError;
+      let truncatedFallback = '';   // 被截断但至少有内容的回复，作为最后兜底
+      for (let attempt = 0; attempt < MAX_TOKEN_ATTEMPTS; attempt++) {
+        if (attempt > 0) {
+          console.warn(`[API] Retry ${attempt} after ${attempt * 3}s...`);
+          await waitForRetry(attempt * 3000, signal);
         }
-        if (response.status === 429 || response.status >= 500) continue; // retry
-        throw lastError;
+
+        // 300 → 600 → 900；第三次仍被截断时使用已拿到的片段。
+        const maxTokens = Math.min(
+          MAX_OUTPUT_TOKENS * (truncationLevel + 1),
+          MAX_TOKENS_LIMIT
+        );
+        const requestSignal = createRequestSignal(signal);
+
+        try {
+          const requestBody = {
+            model: config.model,
+            messages,
+            max_tokens: maxTokens,
+            temperature: config.temperature,
+            ...(thinkingParams || {}),
+          };
+          const response = await fetch(config.apiEndpoint, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify(requestBody),
+            signal: requestSignal.signal,
+          });
+
+          if (!response.ok) {
+            const errorBody = await response.text();
+            lastError = new Error(`API 请求失败 (${response.status}): ${errorBody}`);
+            // 有些服务商/models 不接受「关闭思考」这个字段（比如智谱 GLM-5.3 传 disabled 会直接报错）：
+            // 一旦因此 400，就摘掉该字段重试一次，保证任何模型都还能用。
+            // 这次只用于去掉不兼容参数，不占三次截断重试预算。
+            if (response.status === 400 && thinkingParams && !thinkingFallbackUsed) {
+              console.warn('[API] 400 可能是「关闭思考」参数不被接受，去掉该参数重试');
+              thinkingFallbackUsed = true;
+              thinkingParams = null;
+              attempt--;
+              continue;
+            }
+            if (response.status === 429 || response.status >= 500) continue; // retry
+            throw lastError;
+          }
+
+          const data = await response.json();
+          const choice = data.choices?.[0] || {};
+          const msg = choice.message || {};
+          // finish_reason=length 表示被 max_tokens 截断（思考型模型常把预算用在思考上，
+          // 正文还没开始就没了）。这种情况不能当成普通的"空回复"，否则用户完全查不出原因。
+          const truncated = choice.finish_reason === 'length';
+          const parsed = ApiClient.extractScene(msg.content);
+          let reply = parsed.reply.slice(0, 25);
+
+          if (truncated && reply.length >= truncatedFallback.length) truncatedFallback = reply;
+
+          // 被截断：逐级提高预算重试（最多三次尝试，最高为初始预算的三倍）。
+          if (truncated && attempt < MAX_TOKEN_ATTEMPTS - 1) {
+            const before = maxTokens;
+            truncationLevel = Math.min(truncationLevel + 1, MAX_TOKEN_ATTEMPTS - 1);
+            const nextMaxTokens = Math.min(
+              MAX_OUTPUT_TOKENS * (truncationLevel + 1),
+              MAX_TOKENS_LIMIT
+            );
+            console.warn(`[API] 回复被 max_tokens=${before} 截断，用 ${nextMaxTokens} 重试`);
+            continue;
+          }
+
+          if (!reply || reply.trim() === '') {
+            lastError = truncated
+              ? new Error(`回复被截断：输出预算已达到 ${MAX_TOKENS_LIMIT} tokens（思考型模型会先占用预算），建议换一个不强制思考的模型`)
+              : new Error('AI 返回了空内容，请重试');
+            if (attempt < MAX_TOKEN_ATTEMPTS - 1) continue; // retry on empty
+            throw lastError;
+          }
+
+          // 试到最后一次仍被截断：用能拿到的那段内容（总比一句话都没有强）
+          if (signal?.aborted) throw createAbortError();
+          if (truncated) reply = truncatedFallback || reply;
+
+          this.chatManager.addMessage({ role: 'assistant', content: reply });
+          this.statsTracker.addMessage();
+          if (data.usage?.total_tokens) {
+            this.statsTracker.addTokens(data.usage.total_tokens);
+          }
+          // 请求了场景识别但模型没给标签时按"无法识别"计入其他
+          return { reply, scene: classifyScene ? (parsed.scene || 'other') : null };
+        } finally {
+          requestSignal.cleanup();
+        }
       }
-
-      const data = await response.json();
-      const choice = data.choices?.[0] || {};
-      const msg = choice.message || {};
-      // finish_reason=length 表示被 max_tokens 截断（思考型模型常把预算用在思考上，
-      // 正文还没开始就没了）。这种情况不能当成普通的"空回复"，否则用户完全查不出原因。
-      const truncated = choice.finish_reason === 'length';
-      const parsed = ApiClient.extractScene(msg.content);
-      let reply = parsed.reply.slice(0, 25);
-
-      if (truncated && reply.length >= truncatedFallback.length) truncatedFallback = reply;
-
-      // 被截断：先加大预算重试（通常能拿到完整台词）
-      if (truncated && attempt < 2) {
-        const before = maxTokens;
-        maxTokens = Math.min(maxTokens * 2, MAX_TOKENS_LIMIT);
-        console.warn(`[API] 回复被 max_tokens=${before} 截断，用 ${maxTokens} 重试`);
-        continue;
-      }
-
-      if (!reply || reply.trim() === '') {
-        lastError = truncated
-          ? new Error(`回复被截断：${MAX_OUTPUT_TOKENS} tokens 不够用（思考型模型会先占用预算），建议换一个不强制思考的模型`)
-          : new Error('AI 返回了空内容，请重试');
-        if (attempt < 2) continue; // retry on empty
-        throw lastError;
-      }
-
-      // 试到最后一次仍被截断：用能拿到的那段内容（总比一句话都没有强）
-      if (truncated) reply = truncatedFallback || reply;
-
-      this.chatManager.addMessage({ role: 'assistant', content: reply });
-      this.statsTracker.addMessage();
-      if (data.usage?.total_tokens) {
-        this.statsTracker.addTokens(data.usage.total_tokens);
-      }
-      // 请求了场景识别但模型没给标签时按"无法识别"计入其他
-      return { reply, scene: classifyScene ? (parsed.scene || 'other') : null };
-    }
-    throw lastError;
+      throw lastError || new Error('AI 请求失败');
     } catch (err) {
       this.chatManager.removeMessage(storedUserMsg);
       throw err;

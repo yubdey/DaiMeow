@@ -205,7 +205,7 @@ function populateModels(provider, currentModel) {
   if (models.length === 0) {
     container.innerHTML = `
       <div class="custom-model-box show">
-        <input type="text" id="cfgCustomModel" class="input" placeholder="手动输入模型 ID" value="${currentModel || ''}">
+        <input type="text" id="cfgCustomModel" class="input" placeholder="手动输入模型 ID" value="${escapeAttr(currentModel || '')}">
       </div>`;
     document.getElementById('cfgModel').value = currentModel || '';
     const input = document.getElementById('cfgCustomModel');
@@ -253,7 +253,7 @@ function populateModels(provider, currentModel) {
       </div>
     </div>
     <div class="custom-model-box${isCustom ? ' show' : ''}" id="cfgCustomBox">
-      <input type="text" id="cfgCustomModel" class="input" placeholder="输入模型 ID" value="${isCustom ? currentModel : ''}">
+      <input type="text" id="cfgCustomModel" class="input" placeholder="输入模型 ID" value="${escapeAttr(isCustom ? currentModel : '')}">
     </div>`;
 
   // 点击选择（复用公共绑定函数）
@@ -556,6 +556,16 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+function escapeAttr(text) {
+  return String(text ?? '').replace(/[&"'<>]/g, (ch) => ({
+    '&': '&amp;',
+    '"': '&quot;',
+    "'": '&#39;',
+    '<': '&lt;',
+    '>': '&gt;',
+  }[ch]));
 }
 
 // --- First Run / Info Modal ---

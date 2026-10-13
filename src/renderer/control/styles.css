@@ -317,8 +317,8 @@ body {
 /* 大统计卡片 */
 .stat-cards-main {
   display: grid;
-  /* 用 auto-fit 跟着内容宽度走，窗口拉窄时自己折行，不写死断点 */
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  /* 固定一行两张：窗口拉宽拉窄都保持 2×2，卡片宽度自己均分 */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--sp-4);
 }
 
@@ -774,7 +774,7 @@ select.input {
 
 .lifetags-grid {
   display: grid;
-  /* 与人格卡片同一套列宽规则，同一页里两个网格节奏一致 */
+  /* 词条数量不固定，仍然按内容宽度自动折行 */
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: var(--sp-3);
 }
@@ -888,7 +888,8 @@ select.input {
 
 .persona-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  /* 默认一行三张；接近最小窗口宽度时切两列，避免卡片拥挤 */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--sp-3);
   margin-top: var(--sp-4);
 }
@@ -1223,6 +1224,8 @@ select.input {
    ======================================== */
 @media (max-width: 880px) {
   .panel { padding: var(--sp-5) var(--sp-5) var(--sp-6); }
+  .persona-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .persona-card { padding: 16px 14px; }
   .persona-current-icon { width: 48px; height: 48px; font-size: 26px; }
   .history-msg { max-width: 88%; }
 }

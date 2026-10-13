@@ -447,7 +447,13 @@ function applyGamepadPosition(relX, relY) {
   gamepadTimeout = Date.now() + 500;
 }
 
+// 主进程 XInput 轮询最后一次喂数据的时间；超过 XINPUT_STREAM_GRACE_MS 没收到，
+// 就认为那条路停了（比如 PowerShell 进程被杀），这时才允许浏览器那条路接手。
+let lastXInputAt = 0;
+const XINPUT_STREAM_GRACE_MS = 1500;
+
 petAPI.onGamepadPosition((pos) => {
+  lastXInputAt = Date.now();
   applyGamepadPosition(pos.relX, pos.relY);
 });
 
@@ -483,6 +489,12 @@ function probeGamepads() {
 // XInput 轮询偶尔无法覆盖非 Xbox 手柄；Chromium 能识别时直接读取标准右摇杆 axes[2]/[3]。
 // 只在浏览器手柄确实有输入时接管，避免窗口失焦后浏览器返回零值覆盖 XInput。
 function pollBrowserGamepad() {
+  // 主进程的 XInput 轮询正在供数时，这条路完全让位。两个原因，都是实测出来的：
+  //  1) 两条路会互相覆盖：用伪造手柄量过，同时写入时视线被来回抵消、停在正中，
+  //     表现就是"摇杆怎么动呆喵都没反应"；
+  //  2) Chromium 的手柄数据依赖窗口焦点，失焦后不再更新（返回旧值），而 XInput 读的是
+  //     驱动、与焦点无关。让依赖焦点的那条去压不依赖焦点的那条，等于把"后台可用"毁掉。
+  if (Date.now() - lastXInputAt < XINPUT_STREAM_GRACE_MS) return;
   try {
     const pad = findConnectedGamepad();
     if (!pad || !pad.axes || pad.axes.length < 4) {

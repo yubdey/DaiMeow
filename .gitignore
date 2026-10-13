@@ -13,6 +13,9 @@ src/renderer/pet/live2dcubismcore.js
 # 动作预览工具的构建产物（由 `preview.bat` 自动生成）
 tools/preview-bundle.js
 
+# 本地协作约定（含个人信息，不提交）
+AGENTS.md
+
 # 本地配置 / 日志
 *.log
 .DS_Store
@@ -33,3 +36,11 @@ life-tags.json
 
 # 运行时生成
 *.local
+
+# 通用临时文件
+__pycache__/
+*.pyc
+*.tmp
+*.bak
+*.old
+*.tsbuildinfo

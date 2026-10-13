@@ -5,9 +5,15 @@ const { writeJsonAtomic } = require('./atomic-file');
 
 const TOTALS_PATH = path.join(app.getPath('userData'), 'totals.json');
 
+
+function readNonNegativeInteger(value) {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+}
+
 class StatsTracker {
   constructor() {
     this.startTime = null;
+    this.endTime = null;
     this.messageCount = 0;
     this.totalTokens = 0;
     this.status = 'stopped';
@@ -21,9 +27,10 @@ class StatsTracker {
     try {
       if (fs.existsSync(TOTALS_PATH)) {
         const data = JSON.parse(fs.readFileSync(TOTALS_PATH, 'utf-8'));
-        this.totalUptime = data.totalUptime || 0;
-        this.totalMessages = data.totalMessages || 0;
-        this.totalTokensAll = data.totalTokensAll || 0;
+        if (!data || typeof data !== 'object') return;
+        this.totalUptime = readNonNegativeInteger(data.totalUptime);
+        this.totalMessages = readNonNegativeInteger(data.totalMessages);
+        this.totalTokensAll = readNonNegativeInteger(data.totalTokensAll);
       }
     } catch { /* ignore */ }
   }
@@ -40,12 +47,15 @@ class StatsTracker {
 
   start() {
     this.startTime = Date.now();
+    this.endTime = null;
     this.messageCount = 0;
     this.totalTokens = 0;
     this.status = 'running';
   }
 
   stop() {
+    // 冻结本次运行时长，避免停止后面板刷新时 uptime 继续增长。
+    if (this.startTime && this.endTime === null) this.endTime = Date.now();
     this.status = 'stopped';
   }
 
@@ -61,12 +71,16 @@ class StatsTracker {
   }
 
   addTokens(count) {
-    this.totalTokens += count;
-    this.totalTokensAll += count;
+    const value = readNonNegativeInteger(count);
+    if (value === 0) return;
+    this.totalTokens += value;
+    this.totalTokensAll += value;
   }
 
   addUptime(seconds) {
-    this.totalUptime += seconds;
+    const value = readNonNegativeInteger(seconds);
+    if (value === 0) return;
+    this.totalUptime += value;
   }
 
   /**
@@ -78,7 +92,8 @@ class StatsTracker {
   }
 
   getStats() {
-    const uptime = this.startTime ? Math.floor((Date.now() - this.startTime) / 1000) : 0;
+    const endTime = this.status === 'stopped' && this.endTime !== null ? this.endTime : Date.now();
+    const uptime = this.startTime ? Math.max(0, Math.floor((endTime - this.startTime) / 1000)) : 0;
     return {
       uptime,
       messages: this.messageCount,

@@ -28,7 +28,6 @@ const { save: saveConfig } = require('./services/config-store');
 let controlWindow = null;
 let petWindow = null;
 let tray = null;
-let isQuitting = false;
 
 // Services
 const chatManager = new ChatManager();
@@ -43,6 +42,9 @@ let mousePoller = null;
 let gamepadPoller = null;
 const petDragController = new PetDragController(() => petWindow, getConfig);
 let screenshotTimer = null;
+let cycleGeneration = 0;
+let activeCycleController = null;
+let cycleRunning = false;
 let petWindowReadyPromise = null;
 let petWindowReadyResolve = null;
 let petWindowReadyReject = null;
@@ -59,11 +61,8 @@ if (!gotSingleInstanceLock) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (controlWindow && !controlWindow.isDestroyed()) {
-      if (controlWindow.isMinimized()) controlWindow.restore();
-      if (!controlWindow.isVisible()) controlWindow.show();
-      controlWindow.focus();
-    }
+    // 面板被关掉（已销毁）后再双击一次快捷方式，这里会把它重建出来
+    showControlWindow();
   });
 }
 
@@ -84,8 +83,8 @@ app.whenReady().then(async () => {
   // 恢复上次选中的人格（配置在 app ready 后才加载，所以在这里同步）
   personalityManager.loadFromConfig();
 
-  controlWindow = createControlWindow();
-  tray = createTray(controlWindow, (v) => { isQuitting = v; });
+  ensureControlWindow();
+  tray = createTray(showControlWindow);
 
   apiClient = new ApiClient(
     { getAll: getConfig },
@@ -117,12 +116,7 @@ app.whenReady().then(async () => {
       // 注意：探测的触发点在 startLoop() 里 —— 这里（control:start 中途）循环还没起来，
       // 判断"是否已启动"会永远为假，探测就发不出去。
     },
-    startGamepadPoller: () => {
-      if (gamepadPoller || !petWindow || petWindow.isDestroyed()) return;
-      console.log('[Gamepad] 检测到手柄，启动 XInput 轮询');
-      gamepadPoller = new GamepadPoller(petWindow);
-      gamepadPoller.start();
-    },
+    startGamepadPoller,
     stopPollers: () => {
       if (mousePoller) { mousePoller.stop(); mousePoller = null; }
       if (gamepadPoller) { gamepadPoller.stop(); gamepadPoller = null; }
@@ -134,19 +128,10 @@ app.whenReady().then(async () => {
     startLoop,
     stopLoop,
     applyScreenshotInterval,
-    // 桌宠右键菜单里的「退出呆喵」：跟托盘退出走同一条路径，
-    // 必须先置 isQuitting，否则控制窗口的 close 拦截会把退出吃掉。
+    // 桌宠右键菜单里的「退出呆喵」：跟托盘退出走同一条路径
     quitApp: () => {
-      isQuitting = true;
       app.quit();
     },
-  });
-
-  controlWindow.on('close', (e) => {
-    if (!isQuitting) {
-      e.preventDefault();
-      controlWindow.hide();
-    }
   });
 
   // 后台异步检查远程公告，不阻塞启动；失败静默
@@ -156,6 +141,25 @@ app.whenReady().then(async () => {
     }
   });
 });
+
+/** 控制面板窗口：还在就复用，被关掉过（已销毁）就重新建一个 */
+function ensureControlWindow() {
+  if (controlWindow && !controlWindow.isDestroyed()) return controlWindow;
+  controlWindow = createControlWindow();
+  // 关掉窗口 = 真的销毁（不再只是 hide），把常驻的那个渲染进程还回去；
+  // 下次从托盘、或再双击一次快捷方式进来时按需重建。
+  // 重建后渲染层会自己拉一遍配置 / 统计 / 运行状态（app.js 末尾的 Init 段），
+  // 所以不会出现"面板开了但数据是 0、状态显示成未启动"。
+  controlWindow.on('closed', () => { controlWindow = null; });
+  return controlWindow;
+}
+
+function showControlWindow() {
+  const win = ensureControlWindow();
+  if (win.isMinimized()) win.restore();
+  win.show();
+  win.focus();
+}
 
 function sendPetVisibility(visible) {
   if (petWindow && !petWindow.isDestroyed()) {
@@ -241,9 +245,34 @@ function markPetReady() {
   petWindowReadyReject = null;
   resolve(petWindow);
 }
+
+function startGamepadPoller() {
+  if (gamepadPoller || !petWindow || petWindow.isDestroyed()) return;
+  console.log('[Gamepad] 检测到手柄，启动 XInput 轮询');
+  gamepadPoller = new GamepadPoller(petWindow);
+  gamepadPoller.start();
+}
+
+/**
+ * 点「启动」时判断要不要起 XInput 轮询。
+ *
+ * 不能只靠渲染层的 Chromium Gamepad API 判断：实测「应用启动前就插好」的手柄
+ * 不会出现在 navigator.getGamepads() 里，永远是 [null,null,null,null]，
+ * 用户在桌宠窗口上点过（userActivation.hasBeenActive = true）也照样看不到；
+ * 只有拔掉再插一次、产生「设备到达」事件之后，Chromium 才会枚举到它。
+ * 所以启动时这一次判断直接问 XInput —— 它读的是驱动，不受这个限制。
+ *
+ * 渲染层那条探测保留：它负责覆盖「启动之后才插上的非 XInput 手柄」。
+ */
+async function probeGamepadOnceAndStart() {
+  if (gamepadPoller) return;
+  if (!petWindow || petWindow.isDestroyed()) return;
+  const found = await GamepadPoller.probeOnce();
+  if (found) startGamepadPoller();
+}
+
 app.on('window-all-closed', () => {});
 app.on('before-quit', () => {
-  isQuitting = true;
   stopLoop();
   chatManager.clear();
   if (mousePoller) { mousePoller.stop(); }
@@ -252,10 +281,7 @@ app.on('before-quit', () => {
   modelServer.stop();
 });
 app.on('activate', () => {
-  if (controlWindow) {
-    controlWindow.show();
-    controlWindow.focus();
-  }
+  showControlWindow();
 });
 
 /**
@@ -280,11 +306,12 @@ function readScreenshotIntervalMs() {
  */
 function applyScreenshotInterval() {
   if (screenshotTimer === null) return false;
+  const generation = cycleGeneration;
   // 统计/落盘那两个定时器挂在截图定时器上（见 startLoop 末尾），重排时要一起搬过去
   const statsTimer = screenshotTimer._statsTimer;
   const flushTimer = screenshotTimer._flushTimer;
   clearInterval(screenshotTimer);
-  screenshotTimer = setInterval(runCycle, readScreenshotIntervalMs());
+  screenshotTimer = setInterval(() => runCycle(generation), readScreenshotIntervalMs());
   screenshotTimer._statsTimer = statsTimer;
   screenshotTimer._flushTimer = flushTimer;
   return true;
@@ -293,6 +320,7 @@ function applyScreenshotInterval() {
 function startLoop() {
   // Defensive: clear any existing loop to avoid duplicate timers
   stopLoop();
+  const generation = cycleGeneration;
 
   idleDetector = new IdleDetector({
     // 无操作多久算闲置（秒）：180 = 3 分钟。闲置时会暂停截图循环，也不计入使用时长
@@ -308,13 +336,18 @@ function startLoop() {
 
   statsTracker.start();
 
-  runCycle();
-  screenshotTimer = setInterval(runCycle, readScreenshotIntervalMs());
+  runCycle(generation);
+  screenshotTimer = setInterval(() => runCycle(generation), readScreenshotIntervalMs());
 
   // 手柄支持（默认关闭）：开关打开时，让渲染层用 Chromium 自带的 Gamepad API 探测有没有真手柄；
   // 只有探到手柄（pet:gamepad-presence）才会去起 XInput 轮询那个常驻 PowerShell 进程。
-  if (getConfig().gamepadEnabled === true && petWindow && !petWindow.isDestroyed()) {
-    petWindow.webContents.send('pet:gamepad-probe', true);
+  // 注意：Chromium 那条路对「启动前就插好的手柄」无效（原因见 probeGamepadOnceAndStart），
+  // 所以这里同时直接用 XInput 问一次。
+  if (getConfig().gamepadEnabled === true) {
+    if (petWindow && !petWindow.isDestroyed()) {
+      petWindow.webContents.send('pet:gamepad-probe', true);
+    }
+    probeGamepadOnceAndStart();
   }
 
   const statsTimer = setInterval(() => {
@@ -338,6 +371,13 @@ function startLoop() {
 }
 
 function stopLoop() {
+  // 使上一轮请求失效，并取消正在进行的 fetch，避免停止后迟到回复继续写入界面。
+  cycleGeneration += 1;
+  if (activeCycleController) {
+    activeCycleController.abort();
+    activeCycleController = null;
+  }
+  cycleRunning = false;
   if (idleDetector) { idleDetector.stop(); idleDetector = null; }
   if (screenshotTimer) {
     clearInterval(screenshotTimer._statsTimer);
@@ -353,8 +393,6 @@ function stopLoop() {
   // 若在此停 poller 会把刚启动的追踪清掉。poller 仅在 control:stop / 退出时停。
 }
 
-let cycleRunning = false;
-
 /** 呆喵当前所在显示器的 id（多显示器时决定截哪块屏；取不到返回 null，由截图侧回退） */
 function getPetDisplayId() {
   try {
@@ -369,16 +407,23 @@ function getPetDisplayId() {
   }
 }
 
-async function runCycle() {
+async function runCycle(generation = cycleGeneration) {
   if (cycleRunning) return;
+  if (generation !== cycleGeneration) return;
   if (idleDetector && idleDetector.isIdle) return;
 
   cycleRunning = true;
+  const controller = new AbortController();
+  activeCycleController = controller;
   try {
     // 场景识别与台词共用同一次多模态请求（不会多发一次请求、也不多消耗图片 Token），
     // 所以固定每张都识别；原先的「场景识别频率」抽样开关已从设置里移除。
     const base64Image = await captureScreen({ displayId: getPetDisplayId() });
-    const { reply, scene } = await apiClient.sendScreenshot(base64Image);
+    if (generation !== cycleGeneration || controller.signal.aborted) return;
+    const { reply, scene } = await apiClient.sendScreenshot(base64Image, {
+      signal: controller.signal,
+    });
+    if (generation !== cycleGeneration || controller.signal.aborted) return;
     if (scene) lifeTagsManager.recordScene(scene);
 
     if (controlWindow && !controlWindow.isDestroyed()) {
@@ -393,6 +438,7 @@ async function runCycle() {
       petWindow.webContents.send('pet:show-speech', reply);
     }
   } catch (err) {
+    if (generation !== cycleGeneration || controller.signal.aborted) return;
     console.error('Cycle error:', err.message);
     if (controlWindow && !controlWindow.isDestroyed()) {
       controlWindow.webContents.send('main:error', {
@@ -402,6 +448,7 @@ async function runCycle() {
       });
     }
   } finally {
-    cycleRunning = false;
+    if (activeCycleController === controller) activeCycleController = null;
+    if (generation === cycleGeneration) cycleRunning = false;
   }
 }

@@ -27,14 +27,32 @@ const server = http.createServer((req, res) => {
     const url = new URL(req.url, 'http://localhost');
     let rel = decodeURIComponent(url.pathname).replace(/^\/+/, '');
     if (rel === '') rel = PAGE;
-    const file = path.resolve(ROOT, rel);
-    // 只允许访问项目目录内部
-    if (file !== ROOT && !file.startsWith(ROOT + path.sep)) {
+    const candidate = path.resolve(ROOT, rel);
+    // 先做一次词法路径检查，避免访问项目目录外的文件。
+    if (candidate !== ROOT && !candidate.startsWith(ROOT + path.sep)) {
       res.writeHead(403);
       res.end('Forbidden');
       return;
     }
-    if (!fs.existsSync(file) || fs.statSync(file).isDirectory()) {
+    let file;
+    try {
+      // 再解析 symlink / junction，防止项目内软链接指向项目外。
+      file = fs.realpathSync(candidate);
+    } catch (err) {
+      if (err.code === 'ENOENT') {
+        res.writeHead(404);
+        res.end('Not found: ' + rel);
+        return;
+      }
+      throw err;
+    }
+    const realRoot = fs.realpathSync(ROOT);
+    if (file !== realRoot && !file.startsWith(realRoot + path.sep)) {
+      res.writeHead(403);
+      res.end('Forbidden');
+      return;
+    }
+    if (fs.statSync(file).isDirectory()) {
       res.writeHead(404);
       res.end('Not found: ' + rel);
       return;
